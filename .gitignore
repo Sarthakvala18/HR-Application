@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# Secrets. Never commit.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.key
+google-sa-key*.json
+auth.json
+
+# ---------------------------------------------------------------------------
+# Employee PII. This application holds bank account numbers, home addresses and
+# salaries. None of it belongs in version control, encrypted or not.
+# ---------------------------------------------------------------------------
+*.csv
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+storage/imports/
+hr-app/storage/imports/
+hr-app/database/*.sqlite
+data/
+
+# ---------------------------------------------------------------------------
+# Dependencies and build output
+# ---------------------------------------------------------------------------
+/node_modules
+hr-app/vendor/
+hr-app/node_modules/
+hr-app/public/build
+hr-app/public/hot
+hr-app/public/storage
+
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
+*.log
+hr-app/storage/framework/cache/*
+hr-app/storage/framework/sessions/*
+hr-app/storage/framework/testing/*
+hr-app/storage/framework/views/*
+hr-app/storage/logs/*
+hr-app/bootstrap/cache/*
+.phpunit.result.cache
+/.phpunit.cache
+
+# Deployment artefacts built by scripts/build-deploy-zip.sh
+/dist/
+*.zip
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+/.idea
+/.vscode
+/.fleet
+_ide_helper.php

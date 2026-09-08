@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Runs Itself — Coach Foundation Automation Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:oklch(96.5% 0.012 85);
+  --paper-deep:oklch(93% 0.018 80);
+  --ink:oklch(23% 0.015 60);
+  --ink-soft:oklch(38% 0.015 60);
+  --ink-faint:oklch(52% 0.012 60);
+  --verm:oklch(56% 0.20 33);
+  --verm-deep:oklch(46% 0.18 33);
+  --verm-tint:oklch(92% 0.035 40);
+  --pine:oklch(30% 0.05 165);
+  --pine-tint:oklch(90% 0.03 165);
+  --line:oklch(80% 0.015 70);
+  --slack-bg:#ffffff;
+  --slack-ink:#1d1c1d;
+  --slack-sub:#616061;
+  --font-d:"Bricolage Grotesque",system-ui,sans-serif;
+  --font-m:"Spline Sans Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-d);font-weight:400;line-height:1.55;font-size:clamp(1rem,0.95rem + .3vw,1.125rem);-webkit-font-smoothing:antialiased}
+::selection{background:var(--verm);color:var(--paper)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 clamp(1.25rem,4vw,3.5rem)}
+.mono{font-family:var(--font-m)}
+p{max-width:68ch}
+
+/* ---------- reveal motion ---------- */
+.rv{opacity:0;transform:translateY(26px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}}
+@media print{.rv{opacity:1 !important;transform:none !important;transition:none !important}}
+
+/* ---------- topbar ---------- */
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:1.4rem 0;border-bottom:2px solid var(--ink)}
+.topbar .brand{font-weight:700;letter-spacing:-.01em}
+.topbar .tag{font-family:var(--font-m);font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-soft)}
+
+/* ---------- hero ---------- */
+.hero{padding:clamp(3.5rem,9vw,7.5rem) 0 clamp(3rem,7vw,5.5rem);border-bottom:2px solid var(--ink)}
+.hero .kicker{font-family:var(--font-m);font-size:.78rem;text-transform:uppercase;letter-spacing:.16em;color:var(--verm);font-weight:600;margin-bottom:1.6rem}
+.hero h1{font-size:clamp(3rem,9.5vw,7.8rem);line-height:.95;letter-spacing:-.035em;font-weight:750;max-width:12ch}
+.hero h1 em{font-style:normal;color:var(--verm)}
+.hero .sub{margin-top:2rem;font-size:clamp(1.1rem,1rem + .6vw,1.4rem);color:var(--ink-soft);max-width:44ch;font-weight:420}
+.statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));border:2px solid var(--ink);margin-top:clamp(2.5rem,5vw,4rem)}
+.statrow>div{padding:1.4rem 1.5rem;border-right:2px solid var(--ink)}
+.statrow>div:last-child{border-right:none}
+.statrow .n{font-size:clamp(1.9rem,3.4vw,2.7rem);font-weight:750;letter-spacing:-.03em;line-height:1.05}
+.statrow .n span{color:var(--verm)}
+.statrow .l{font-family:var(--font-m);font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-soft);margin-top:.45rem}
+@media(max-width:720px){.statrow>div{border-right:none;border-bottom:2px solid var(--ink)}.statrow>div:last-child{border-bottom:none}}
+
+/* ---------- sections ---------- */
+section{padding:clamp(3.5rem,8vw,6.5rem) 0}
+.snum{font-family:var(--font-m);font-size:clamp(3.2rem,7vw,5.5rem);font-weight:600;line-height:1;color:transparent;-webkit-text-stroke:1.5px var(--verm);letter-spacing:-.02em}
+.shead{display:flex;align-items:baseline;gap:1.4rem;flex-wrap:wrap;margin-bottom:clamp(1.8rem,4vw,3rem)}
+.shead h2{font-size:clamp(1.9rem,4.2vw,3.2rem);letter-spacing:-.025em;font-weight:720;line-height:1.05;max-width:22ch}
+.lede{font-size:clamp(1.05rem,1rem + .35vw,1.25rem);color:var(--ink-soft);max-width:58ch}
+.rule{border:none;border-top:2px solid var(--ink)}
+
+/* ---------- problem: console ledger ---------- */
+.ledger{border:2px solid var(--ink);margin-top:2.2rem}
+.ledger .row{display:grid;grid-template-columns:3.2rem 1fr 1.15fr;border-bottom:1px solid var(--line);align-items:start}
+.ledger .row:last-child{border-bottom:none}
+.ledger .idx{font-family:var(--font-m);font-size:.8rem;font-weight:600;padding:1rem .9rem;color:var(--verm);border-right:1px solid var(--line)}
+.ledger .sys{padding:.95rem 1.1rem;font-weight:650;letter-spacing:-.01em}
+.ledger .sys small{display:block;font-weight:420;color:var(--ink-faint);font-size:.82rem;letter-spacing:0}
+.ledger .act{padding:.95rem 1.1rem;font-size:.9rem;color:var(--ink-soft);border-left:1px solid var(--line)}
+.ledger .act b{color:var(--ink);font-weight:600}
+@media(max-width:680px){.ledger .row{grid-template-columns:2.4rem 1fr}.ledger .act{grid-column:2;border-left:none;padding-top:0}}
+.painband{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:2px;background:var(--ink);border:2px solid var(--ink);margin-top:2.4rem}
+.painband>div{background:var(--verm-tint);padding:1.5rem 1.4rem}
+.painband h3{font-size:1.05rem;font-weight:700;letter-spacing:-.01em;color:var(--verm-deep)}
+.painband p{font-size:.9rem;color:var(--ink-soft);margin-top:.5rem;line-height:1.5}
+
+/* ---------- insight: owned stack ---------- */
+.own{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:clamp(1.2rem,3vw,2.2rem);margin-top:2.4rem}
+.own article{border-top:4px solid var(--verm);padding-top:1.2rem}
+.own .price{font-family:var(--font-m);font-size:.74rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--verm);margin-bottom:.5rem}
+.own h3{font-size:1.35rem;font-weight:720;letter-spacing:-.02em}
+.own p{font-size:.94rem;color:var(--ink-soft);margin-top:.55rem}
+.zero{margin-top:2.8rem;font-size:clamp(1.4rem,2.6vw,2rem);font-weight:650;letter-spacing:-.02em;max-width:30ch}
+.zero span{color:var(--verm)}
+
+/* ---------- architecture ---------- */
+.arch{margin-top:2.2rem;display:grid;gap:0}
+.layer{border:2px solid var(--ink);background:var(--paper);display:grid;grid-template-columns:minmax(140px,.32fr) 1fr;position:relative}
+.layer+.connector{width:2px;height:2rem;background:var(--ink);margin-left:clamp(2rem,8vw,5rem);position:relative}
+.layer+.connector::after{content:"";position:absolute;bottom:-1px;left:-4px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--ink)}
+.layer .lt{padding:1.4rem;border-right:2px solid var(--ink);display:flex;flex-direction:column;gap:.4rem;justify-content:center}
+.layer .lt .ln{font-family:var(--font-m);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--verm);font-weight:600}
+.layer .lt .lname{font-weight:750;font-size:1.2rem;letter-spacing:-.015em;line-height:1.15}
+.layer .lb{padding:1.4rem 1.5rem;font-size:.93rem;color:var(--ink-soft)}
+.layer .lb b{color:var(--ink);font-weight:640}
+.layer.l1{background:var(--pine-tint)}
+.layer.l3{background:var(--verm-tint)}
+@media(max-width:620px){.layer{grid-template-columns:1fr}.layer .lt{border-right:none;border-bottom:2px solid var(--ink)}}
+
+/* ---------- flow rail ---------- */
+.rail{margin-top:2.4rem;position:relative;padding-left:clamp(1.6rem,4vw,2.4rem)}
+.rail::before{content:"";position:absolute;left:.55rem;top:.6rem;bottom:.6rem;width:2px;background:var(--ink)}
+.stop{position:relative;padding:0 0 2rem 1.2rem}
+.stop:last-child{padding-bottom:0}
+.stop::before{content:"";position:absolute;left:calc(-1 * clamp(1.6rem,4vw,2.4rem) + .55rem - 5px);top:.42em;width:12px;height:12px;background:var(--paper);border:2.5px solid var(--verm);border-radius:50%}
+.stop.gate::before{background:var(--verm);border-color:var(--verm)}
+.stop h4{font-weight:700;letter-spacing:-.012em;font-size:1.08rem}
+.stop h4 .chip{display:inline-block;font-family:var(--font-m);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;background:var(--verm);color:var(--paper);padding:.22em .6em;border-radius:2px;vertical-align:.15em;margin-left:.55rem}
+.stop h4 .chip.h{background:var(--ink)}
+.stop p{font-size:.92rem;color:var(--ink-soft);margin-top:.35rem;max-width:62ch}
+
+/* ---------- offboarding dark band ---------- */
+.band-dark{background:var(--ink);color:oklch(93% 0.01 80)}
+.band-dark .snum{-webkit-text-stroke-color:oklch(70% 0.16 40)}
+.band-dark .shead h2{color:oklch(96% 0.01 80)}
+.band-dark .lede{color:oklch(75% 0.012 70)}
+.band-dark .stop p{color:oklch(72% 0.012 70)}
+.band-dark .stop h4{color:oklch(94% 0.01 80)}
+.band-dark .rail::before{background:oklch(50% 0.01 70)}
+.band-dark .stop::before{background:var(--ink);border-color:oklch(70% 0.16 40)}
+.band-dark .stop.gate::before{background:oklch(70% 0.16 40)}
+.matrix{margin-top:2.6rem;border:1px solid oklch(45% 0.012 70);overflow-x:auto}
+.matrix table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:480px}
+.matrix caption{text-align:left;font-family:var(--font-m);font-size:.72rem;text-transform:uppercase;letter-spacing:.13em;color:oklch(70% 0.16 40);padding:.9rem 1.1rem;font-weight:600;border-bottom:1px solid oklch(45% 0.012 70)}
+.matrix th,.matrix td{padding:.7rem 1.1rem;text-align:left;border-bottom:1px solid oklch(36% 0.012 70)}
+.matrix th{font-family:var(--font-m);font-size:.68rem;text-transform:uppercase;letter-spacing:.11em;color:oklch(68% 0.012 70);font-weight:500}
+.matrix td:last-child{font-weight:600;color:oklch(90% 0.02 60)}
+.matrix tr:last-child td{border-bottom:none}
+
+/* ---------- slack mock ---------- */
+.slackframe{margin-top:2.6rem;border:2px solid var(--ink);border-radius:10px;overflow:hidden;box-shadow:8px 8px 0 var(--verm-tint), 8px 8px 0 2px var(--verm)}
+.slacktop{background:#3f0e40;color:#fff;padding:.7rem 1.1rem;display:flex;align-items:center;gap:.6rem;font-size:.9rem;font-weight:700;font-family:-apple-system,"Segoe UI",sans-serif}
+.slacktop .hash{opacity:.75;font-weight:400}
+.slacktop .pill{margin-left:auto;font-size:.62rem;font-weight:600;background:oklch(70% 0.16 40);color:#fff;padding:.25em .7em;border-radius:99px;letter-spacing:.08em;text-transform:uppercase;font-family:var(--font-m)}
+.slackbody{background:var(--slack-bg);padding:.6rem 0 1rem;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--slack-ink)}
+.smsg{display:grid;grid-template-columns:38px 1fr;gap:.7rem;padding:.75rem 1.1rem .35rem}
+.savatar{width:38px;height:38px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem;color:#fff}
+.sname{font-weight:800;font-size:.92rem}
+.sname .app{background:#e8e8e8;color:#616061;font-size:.6rem;font-weight:600;padding:.1em .4em;border-radius:3px;vertical-align:.12em;margin-left:.3rem;letter-spacing:.02em}
+.stime{color:var(--slack-sub);font-weight:400;font-size:.74rem;margin-left:.45rem}
+.stext{font-size:.9rem;line-height:1.45;margin-top:.15rem}
+.stext .at{color:#1264a3;background:#e8f5fa;border-radius:3px;padding:0 .15em;font-weight:500}
+.stext .day{font-weight:700}
+.sreact{display:flex;gap:.35rem;margin:.5rem 0 .2rem;flex-wrap:wrap}
+.sreact span{border:1px solid #d8d8d8;background:#f6f6f6;border-radius:99px;font-size:.74rem;padding:.15em .55em;color:#616061}
+.sreact span.on{background:#e8f5fa;border-color:#1264a3;color:#1264a3;font-weight:600}
+.sdivider{text-align:center;position:relative;margin:.9rem 0 .4rem}
+.sdivider::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#e8e8e8}
+.sdivider b{position:relative;background:var(--slack-bg);border:1px solid #e8e8e8;border-radius:99px;font-size:.7rem;font-weight:700;padding:.25em .9em;color:var(--slack-ink)}
+.annot{display:flex;gap:.6rem;align-items:flex-start;margin-top:1.1rem;max-width:56ch}
+.annot .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--verm);margin-top:.42em}
+.annot p{font-size:.88rem;color:var(--ink-soft)}
+.annot p b{color:var(--ink)}
+.champgrid{display:grid;grid-template-columns:1.25fr .75fr;gap:clamp(1.6rem,4vw,3rem);align-items:start}
+@media(max-width:900px){.champgrid{grid-template-columns:1fr}}
+.autolist{border:2px solid var(--ink);margin-top:2.6rem}
+.autolist>div{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.autolist>div:last-child{border-bottom:none}
+.autolist .from{padding:.9rem 1.1rem;font-size:.88rem;color:var(--ink-soft);border-right:1px solid var(--line)}
+.autolist .to{padding:.9rem 1.1rem;font-size:.88rem;font-weight:600}
+.autolist .hd{background:var(--paper-deep)}
+.autolist .hd div{font-family:var(--font-m);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;font-weight:600;color:var(--ink-soft)}
+@media(max-width:640px){.autolist>div{grid-template-columns:1fr}.autolist .from{border-right:none;border-bottom:1px dashed var(--line)}}
+
+/* ---------- timeline ---------- */
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0;border:2px solid var(--ink);margin-top:2.4rem}
+.phase{padding:1.6rem 1.4rem 1.8rem;border-right:2px solid var(--ink);display:flex;flex-direction:column;gap:.6rem}
+.phase:last-child{border-right:none}
+.phase .wk{font-family:var(--font-m);font-size:.7rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--verm)}
+.phase h3{font-size:1.22rem;font-weight:720;letter-spacing:-.018em;line-height:1.15}
+.phase p{font-size:.88rem;color:var(--ink-soft);line-height:1.5}
+.phase .ship{margin-top:auto;padding-top:.9rem;font-size:.82rem;font-weight:650;color:var(--pine)}
+.phase.hot{background:var(--verm-tint)}
+@media(max-width:980px){.phases{grid-template-columns:1fr 1fr}.phase:nth-child(2){border-right:none}.phase:nth-child(1),.phase:nth-child(2){border-bottom:2px solid var(--ink)}}
+@media(max-width:560px){.phases{grid-template-columns:1fr}.phase{border-right:none;border-bottom:2px solid var(--ink)}.phase:last-child{border-bottom:none}}
+
+/* ---------- asks (drenched) ---------- */
+.band-verm{background:var(--verm);color:oklch(97% 0.015 60)}
+.band-verm .shead h2{color:oklch(98% 0.01 60)}
+.band-verm .snum{-webkit-text-stroke-color:oklch(97% 0.015 60)}
+.band-verm .lede{color:oklch(93% 0.03 45)}
+.asks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:clamp(1.4rem,3vw,2.4rem);margin-top:2.6rem}
+.ask{border-top:3px solid oklch(97% 0.015 60);padding-top:1.1rem}
+.ask .an{font-family:var(--font-m);font-weight:600;font-size:.78rem;letter-spacing:.1em}
+.ask h3{font-size:1.3rem;font-weight:720;letter-spacing:-.02em;margin-top:.4rem;line-height:1.2}
+.ask p{font-size:.92rem;color:oklch(94% 0.03 45);margin-top:.5rem}
+.closer{margin-top:3.2rem;font-size:clamp(1.5rem,3.2vw,2.4rem);font-weight:700;letter-spacing:-.025em;max-width:24ch;line-height:1.15}
+
+/* ---------- footer ---------- */
+footer{padding:2.2rem 0 3rem;border-top:2px solid var(--ink)}
+footer .cols{display:flex;justify-content:space-between;gap:2rem;flex-wrap:wrap;font-family:var(--font-m);font-size:.72rem;letter-spacing:.08em;color:var(--ink-soft);text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">Coach Foundation</div>
+    <div class="tag">Internal proposal · July 2026</div>
+  </div>
+
+  <header class="hero">
+    <div class="kicker rv">People Operations × Automation</div>
+    <h1 class="rv">HR runs <em>itself.</em></h1>
+    <p class="sub rv">Every hire, every exit, every leave, and every #champions post, executed by systems we already pay for. Humans keep every decision that involves money or judgment.</p>
+    <div class="statrow rv">
+      <div><div class="n">8 <span>→</span> 1</div><div class="l">Consoles per hire → one form</div></div>
+      <div><div class="n"><span>$0</span></div><div class="l">New software spend</div></div>
+      <div><div class="n">~5 wks</div><div class="l">To full rollout, in 4 phases</div></div>
+      <div><div class="n">Minutes</div><div class="l">To revoke all access on exit</div></div>
+    </div>
+  </header>
+
+  <section id="problem">
+    <div class="shead rv"><span class="snum">01</span><h2>Every hire is a relay race across 8 consoles.</h2></div>
+    <p class="lede rv">This is the actual chain from our HR SOP. Each step is a different admin panel, a different person to chase, and a different way to forget something.</p>
+    <div class="ledger rv">
+      <div class="row"><div class="idx">01</div><div class="sys">Appointment letter<small>Google Doc template</small></div><div class="act">Draft by hand, <b>R&amp;R section written from scratch</b>, export PDF, upload to Zoho Sign</div></div>
+      <div class="row"><div class="idx">02</div><div class="sys">Google Workspace<small>via reseller at seat limit</small></div><div class="act">Create user, set password, groups, drives; <b>contact reseller</b> if no seats left</div></div>
+      <div class="row"><div class="idx">03</div><div class="sys">Zoho One<small>admin panel</small></div><div class="act">Add user, pick app accesses, OTP; <b>the licence approvers</b> looped in for license cost</div></div>
+      <div class="row"><div class="idx">04</div><div class="sys">Zoho Desk<small>agents &amp; forwarding</small></div><div class="act">Agent profile, dept access, then a <b>9-step Gmail forwarding dance</b> with activation links</div></div>
+      <div class="row"><div class="idx">05</div><div class="sys">Slack<small>sai-coach workspace</small></div><div class="act">Invite, choose guest vs member, pick channels, chase 2FA</div></div>
+      <div class="row"><div class="idx">06</div><div class="sys">Zoom<small>mysaifai account</small></div><div class="act">Free vs Pro license, <b>ask the licence approver to purchase</b>, fix timezone or auto-recording breaks</div></div>
+      <div class="row"><div class="idx">07</div><div class="sys">Bitwarden<small>self-hosted</small></div><div class="act">Invite, send instruction doc, wait for extension install, admin approves</div></div>
+      <div class="row"><div class="idx">08</div><div class="sys">Announcements<small>#champions</small></div><div class="act">Welcome post, manager heads-up, onboarding call, all from memory</div></div>
+    </div>
+    <div class="painband rv">
+      <div><h3>It leaks money</h3><p>A Zoom license not removed before the billing cycle gets billed again. License removal is buried behind plan management and a CVV prompt, so it slips.</p></div>
+      <div><h3>It leaks access</h3><p>Offboarding is "reverse everything, by hand." Until someone finishes the list, a departed employee still holds email, CRM, passwords, and client recordings.</p></div>
+      <div><h3>It lives in heads</h3><p>The process exists as one Word doc and the memory of whoever did it last. Every step names a person: named individuals.</p></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section id="insight">
+    <div class="shead rv"><span class="snum">02</span><h2>We already own every piece of the fix.</h2></div>
+    <p class="lede rv">This is not a build-an-app proposal and not a buy-a-tool proposal. The three components are already paid for, already running, or already in daily use.</p>
+    <div class="own rv">
+      <article><div class="price">Paid for · unused</div><h3>Zoho People</h3><p>Sitting inside our Zoho One license. Native leave balances, comp-offs, holiday calendars, and onboarding checklists. It becomes the single record of who works here.</p></article>
+      <article><div class="price">Running today</div><h3>n8n hub</h3><p>Our automation server already handles company workflows. Provisioning accounts is deterministic checklist work, exactly what it is built for.</p></article>
+      <article><div class="price">In daily use</div><h3>Claude</h3><p>Becomes the HR coworker: drafts appointment letters (including the painful R&amp;R section), handles exceptions, answers "who's out next week?"</p></article>
+    </div>
+    <p class="zero rv">New software budget required: <span>zero dollars.</span></p>
+  </section>
+
+  <hr class="rule">
+
+  <section id="arch">
+    <div class="shead rv"><span class="snum">03</span><h2>Three layers, one source of truth.</h2></div>
+    <div class="arch rv">
+      <div class="layer l1">
+        <div class="lt"><span class="ln">Layer 1 · Record</span><span class="lname">Zoho People</span></div>
+        <div class="lb">The employee ledger: profiles, departments, managers, join and exit dates, leave balances, the holiday calendar. <b>Adding a hire here is the one action that triggers everything else.</b></div>
+      </div>
+      <div class="connector"></div>
+      <div class="layer l2">
+        <div class="lt"><span class="ln">Layer 2 · Engine</span><span class="lname">n8n workflows</span></div>
+        <div class="lb">Five workflows: <b>Onboard, Offboard, Leaves, Letters, License-Guard.</b> They call the Google, Zoho, Zoom, Slack, and Bitwarden APIs in the right order, pause at human approval gates, and log every step.</div>
+      </div>
+      <div class="connector"></div>
+      <div class="layer l3">
+        <div class="lt"><span class="ln">Layer 3 · Coworker</span><span class="lname">Claude</span></div>
+        <div class="lb">The conversational front door. <b>"Onboard Rahul, sales, starts Aug 1, reports to Meera"</b> validates the request, drafts the letter, fires the workflow, and reports progress. Holds no destructive credentials; n8n owns all keys.</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section id="onboard">
+    <div class="shead rv"><span class="snum">04</span><h2>Onboarding: one form in, a teammate out.</h2></div>
+    <p class="lede rv">Solid dots are human approval gates. Money never moves without a named person clicking yes; everything mechanical happens on its own.</p>
+    <div class="rail rv">
+      <div class="stop"><h4>HR fills one form <span class="chip h">2 minutes</span></h4><p>Name, personal email, department, role template, manager, start date. Role templates carry everything downstream: groups, channels, licenses, vault collections.</p></div>
+      <div class="stop"><h4>Letter drafted &amp; signed</h4><p>Claude drafts the appointment letter with the R&amp;R section filled from the role template. HR reviews, Zoho Sign sends it. Freelancers get the NDA instead, and nothing provisions until it is signed.</p></div>
+      <div class="stop gate"><h4>License check <span class="chip">Human gate</span></h4><p>Free seats counted across Google, Zoom, Zoho. If short, a Slack approval card goes to the licence approver, the licence approver, or the HR lead with the exact cost. The workflow waits for the click.</p></div>
+      <div class="stop"><h4>Accounts cascade</h4><p>Google account with groups and drives, Zoho One apps, Desk agent with forwarding, Zoom with the correct timezone, Bitwarden collections. Slack invite arrives as a prefilled one-click task (Pro plan keeps invites manual, everything else automates).</p></div>
+      <div class="stop"><h4>Day-one welcome</h4><p>Welcome post in #champions, manager receives the day-one checklist, every completed step ticked in Zoho People automatically. Full audit trail of who got what.</p></div>
+    </div>
+  </section>
+</div>
+
+<section class="band-dark" id="offboard">
+  <div class="wrap">
+    <div class="shead rv"><span class="snum">05</span><h2>Offboarding: access dies in minutes, data lives on.</h2></div>
+    <p class="lede rv">Order is the whole game. Access first, data second, letters last. For terminations the first three steps run within minutes of the trigger.</p>
+    <div class="rail rv">
+      <div class="stop gate"><h4>Suspend Google <span class="chip">Instant</span></h4><p>Password reset, every session signed out, all OAuth tokens revoked. Because Google is the identity backbone, this alone cuts most access company-wide.</p></div>
+      <div class="stop"><h4>Vault &amp; apps revoked</h4><p>Bitwarden membership removed and a rotation list generated for every shared credential they could read. Zoho deactivated with open Desk tickets reassigned. Zoom deactivated with meetings and recordings transferred.</p></div>
+      <div class="stop gate"><h4>License guard <span class="chip">Stops the leak</span></h4><p>Freed Zoom licenses are flagged for reuse by the next hire. If still unused three days before the billing cycle, a removal reminder fires. No more paying for ghosts.</p></div>
+      <div class="stop"><h4>Data lands where it should</h4><p>Drive and mail migrate by the department matrix below. After a 24-hour verification, the user is deleted and the old address becomes an alias so no client email ever bounces.</p></div>
+      <div class="stop"><h4>Letters &amp; audit</h4><p>Relieving and experience letters drafted from our templates, approved by HR, sent from hr@example.com. The exit checklist in Zoho People shows who triggered what, and when.</p></div>
+    </div>
+    <div class="matrix rv">
+      <table>
+        <caption>Data migration matrix — from the current SOP, now enforced by the workflow</caption>
+        <thead><tr><th>Departing from</th><th>Mail &amp; Drive go to</th></tr></thead>
+        <tbody>
+          <tr><td>General · Sales · Finance</td><td>Admin account</td></tr>
+          <tr><td>Product</td><td>Product account</td></tr>
+          <tr><td>Marketing</td><td>Manager, or Admin if they were the manager</td></tr>
+          <tr><td>Tech</td><td>Services account</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <section id="champions">
+    <div class="shead rv"><span class="snum">06</span><h2>#champions, on autopilot.</h2></div>
+    <div class="champgrid">
+      <div>
+        <p class="lede rv">These posts go out by hand today: the 12:00 leave post, the weekly out-of-office rundown, holiday comp-off threads. Same voice, same format, zero typing.</p>
+        <div class="slackframe rv">
+          <div class="slacktop"><span class="hash">#</span>champions <span class="pill">Generated by workflow</span></div>
+          <div class="slackbody">
+            <div class="sdivider"><b>Today</b></div>
+            <div class="smsg">
+              <div class="savatar" style="background:#7c3085">CF</div>
+              <div>
+                <div class="sname">Coach Foundation Admin <span class="app">APP</span><span class="stime">12:00 PM</span></div>
+                <div class="stext"><span class="at">@channel</span> on Full-Day leave <span class="at">@Alex</span> and on Half-Day leave <span class="at">@Casey</span></div>
+                <div class="sreact"><span class="on">👀 14</span><span>🙌 6</span></div>
+              </div>
+            </div>
+            <div class="smsg">
+              <div class="savatar" style="background:#2e7d55">CF</div>
+              <div>
+                <div class="sname">Coach Foundation Admin <span class="app">APP</span><span class="stime">2:00 PM</span></div>
+                <div class="stext"><span class="day">OUT-OF-OFFICE STATUS FOR UPCOMING WEEK</span><br>
+                <span class="day">Mon 20th:</span> Full-Day leave <span class="at">@a team member</span><br>
+                <span class="day">Wed 22nd:</span> Company Holiday — Raksha Bandhan<br>
+                Please be reminded accordingly <span class="at">@dept-managers</span> <span class="at">@hods</span></div>
+                <div class="sreact"><span class="on">💯 21</span><span>✅ 9</span></div>
+              </div>
+            </div>
+            <div class="smsg">
+              <div class="savatar" style="background:#c25617">CF</div>
+              <div>
+                <div class="sname">Coach Foundation Admin <span class="app">APP</span><span class="stime">10:00 AM</span></div>
+                <div class="stext"><span class="at">@channel</span> <span class="day">Raksha Bandhan — Wed 22nd</span> is an official company holiday. Working that day? Fill the Comp-Off form and it will be credited to your leave balance automatically. Reply in this thread with your plan. <span class="at">@a department head</span> <span class="at">@a department head</span> <span class="at">@a department head</span> please inform your departments.</div>
+                <div class="sreact"><span class="on">💯 18</span><span>🎉 4</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="annot rv"><div class="dot"></div><p><b>Daily 12:00 post</b> generated from approved leave records. Posts only when someone is actually out.</p></div>
+        <div class="annot rv"><div class="dot"></div><p><b>Weekly rundown</b> assembled from the calendar, mentions kept, the file-a-week-ahead nudge shown only when late filings actually happened.</p></div>
+        <div class="annot rv"><div class="dot"></div><p><b>Holiday threads</b> fire days in advance. Comp-Off submissions credit balances automatically instead of landing in a sheet.</p></div>
+        <div class="annot rv"><div class="dot"></div><p><b>Acknowledgment chasing</b> ends: the bot reads the reactions and DMs ops a list of who has not responded after 24 hours.</p></div>
+        <div class="annot rv"><div class="dot"></div><p><b>Birthdays &amp; anniversaries</b> pulled from Zoho People; Claude drafts the celebration post, HR approves, it ships. Promotions stay human-written.</p></div>
+      </div>
+    </div>
+    <div class="autolist rv">
+      <div class="hd"><div class="from">Done by hand today</div><div class="to">Handled by the system</div></div>
+      <div><div class="from">the HR lead types the holiday announcement at 6 PM</div><div class="to">Posted automatically days ahead, with the Comp-Off link</div></div>
+      <div><div class="from">Comp-off form rows copied into the leave sheet</div><div class="to">Balances credited on approval in Zoho People</div></div>
+      <div><div class="from">Ops chases people to react with :100:</div><div class="to">Bot reports non-responders after 24 hours</div></div>
+      <div><div class="from">Zoom-to-S3, drive-ownership, contact-update reminders</div><div class="to">Kept exactly as they are — they already work</div></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section id="plan">
+    <div class="shead rv"><span class="snum">07</span><h2>Five weeks, four phases, each one useful alone.</h2></div>
+    <div class="phases rv">
+      <div class="phase hot"><div class="wk">Week 1–2 · First win</div><h3>Leaves &amp; holidays</h3><p>Typeform keeps working; submissions flow into Zoho People. The 12:00 and weekly posts, holiday threads, and comp-off crediting go live.</p><div class="ship">Ships: #champions on autopilot</div></div>
+      <div class="phase"><div class="wk">Week 2–3</div><h3>Onboarding</h3><p>Letter drafting via Zoho Sign, license gates, and the account cascade. Tested on a dummy hire, then the next real one.</p><div class="ship">Ships: one-form hiring</div></div>
+      <div class="phase"><div class="wk">Week 4</div><h3>Offboarding</h3><p>The suspend-first chain, data matrix, license guard, and letters. The highest security and cost payoff of the whole plan.</p><div class="ship">Ships: minutes-fast revocation</div></div>
+      <div class="phase"><div class="wk">Week 5</div><h3>Claude coworker</h3><p>The conversational layer over everything: natural-language hiring, exception handling, HR questions answered from the record.</p><div class="ship">Ships: HR by conversation</div></div>
+    </div>
+  </section>
+</div>
+
+<section class="band-verm" id="asks">
+  <div class="wrap">
+    <div class="shead rv"><span class="snum">08</span><h2>Three yeses and Phase 1 ships this month.</h2></div>
+    <div class="asks rv">
+      <div class="ask"><div class="an">ASK 01</div><h3>Bless the source of truth</h3><p>Zoho People becomes the official employee record. Hires and exits are entered there and nowhere else. It is already in our license.</p></div>
+      <div class="ask"><div class="an">ASK 02</div><h3>Approve two credentials</h3><p>A Google service account for provisioning and a Slack bot for #champions. Both live only inside n8n, never on laptops.</p></div>
+      <div class="ask"><div class="an">ASK 03</div><h3>Name the approvers</h3><p>Confirm the license approvers (the licence approvers) and who may trigger an offboarding. The allowlist is enforced in the workflow itself, not in a prompt.</p></div>
+    </div>
+    <p class="closer rv">No new spend. No new vendor. Just the tools we own, finally working together.</p>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <div class="cols">
+      <span>Sources: HR Tasks SOP · #champions history · PLAN.md</span>
+      <span>Coach Foundation · People Ops · 2026</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+const els=[...document.querySelectorAll('.rv')];
+if(location.search.includes('flat')){els.forEach(el=>{el.style.transition='none';el.classList.add('in')})}
+els.forEach((el,i)=>{el.style.transitionDelay=(i%4*70)+'ms'});
+let pending=els.slice();
+function sweep(){
+  const vh=window.innerHeight;
+  pending=pending.filter(el=>{
+    const r=el.getBoundingClientRect();
+    if(r.top<vh-30&&r.bottom>0){el.classList.add('in');return false}
+    return true;
+  });
+  if(!pending.length){window.removeEventListener('scroll',onScroll)}
+}
+let raf=null;
+function onScroll(){if(raf)return;raf=requestAnimationFrame(()=>{raf=null;sweep()})}
+window.addEventListener('scroll',onScroll,{passive:true});
+window.addEventListener('resize',onScroll,{passive:true});
+sweep();
+</script>
+</body>
+</html>
