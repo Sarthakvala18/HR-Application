@@ -10,6 +10,7 @@ use App\Models\ProcessRun;
 use App\Models\ProcessTask;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Zoho\LetterService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -20,7 +21,62 @@ use RuntimeException;
  */
 class ProcessTaskRunner
 {
+    /** The offboarding step that dispatches the exit letters. */
+    public const LETTERS_KEY = 'letters';
+
     public function __construct(private readonly AuditLogger $audit) {}
+
+    /**
+     * Dispatches both exit letters and records the outcome on the task.
+     *
+     * Throws unless every letter went out, so a partial or failed send leaves
+     * the step outstanding rather than silently completed.
+     */
+    private function sendExitLetters(ProcessTask $task, ?string $evidence): string
+    {
+        $employee = $task->run->employee;
+
+        if ($employee === null) {
+            throw new RuntimeException('This run has no employee attached.');
+        }
+
+        // Values the sender supplied for gaps that have no column of their own,
+        // such as "Reports to" or the HR signatory name.
+        $context = $task->payload['supplied'] ?? [];
+
+        // Emailed rather than dispatched through Zoho Sign: the licence allows
+        // creating documents but not sending them, so the app fills the same
+        // templates itself and attaches them.
+        $results = app(LetterService::class)->emailExitLetters(
+            $employee->refresh(),
+            context: $context,
+        );
+
+        $task->update(['result' => $results]);
+
+        $failed = array_filter($results, fn (array $r) => ! $r['ok']);
+
+        if ($failed !== []) {
+            $reasons = implode(' | ', array_map(
+                fn (array $r) => $r['template'].': '.$r['error'],
+                $failed,
+            ));
+
+            $sent = array_filter($results, fn (array $r) => $r['ok']);
+
+            throw new RuntimeException(
+                ($sent === []
+                    ? 'No letters were sent. '
+                    : count($sent).' of '.count($results).' letters were sent, the rest failed. ')
+                .$reasons,
+            );
+        }
+
+        $summary = implode(', ', array_column($results, 'template'));
+
+        return trim(($evidence ? $evidence.' — ' : '')
+            .'Emailed to '.($employee->personal_email ?: $employee->work_email).': '.$summary);
+    }
 
     /**
      * Recomputes which tasks are blocked by unfinished dependencies. Called
@@ -60,6 +116,14 @@ class ProcessTaskRunner
 
         if ($task->requiresEvidence() && blank($evidence) && blank($task->evidence)) {
             throw new RuntimeException('Manual steps need evidence of what was done.');
+        }
+
+        // The letters step claims documents were sent, so it must actually send
+        // them. Marking it done without a successful send would be a checkbox
+        // that lies, which is the failure mode this whole pipeline exists to
+        // remove.
+        if ($task->key === self::LETTERS_KEY && blank($task->result)) {
+            $evidence = $this->sendExitLetters($task, $evidence);
         }
 
         return DB::transaction(function () use ($task, $user, $evidence) {

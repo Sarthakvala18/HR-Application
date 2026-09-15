@@ -1,6 +1,6 @@
 # STATUS — Coach Foundation HR App
 
-**Updated:** 2026-08-12
+**Updated:** 2026-09-15
 
 ---
 
@@ -108,21 +108,56 @@ That distinction was only visible from the API. The earlier screenshot-derived m
 
 Nothing sends unless a template is both linked and verified: `sendTemplate()` refuses otherwise. All four now pass.
 
+### Zoho Sign cannot send on this licence — letters are emailed instead
+
+Reading works. Sending does not. Tested across every write path:
+
+| Call | Result |
+| --- | --- |
+| `GET /templates`, `GET /requests` | 200 |
+| Upload own PDF, create draft | 200 |
+| `POST /templates/{id}/createdocument` | 400 — licence error |
+| `POST /requests/{id}/submit` | 400 — licence error |
+
+**Scopes are not the cause.** A call to `/users` returns a genuine `Invalid Oauth Scope` 403, which proves the API distinguishes the two failures. The send block is the licence.
+
+So the app fills the letters itself and emails them:
+
+- `LetterPdfRenderer` stamps the real letter artwork using the field coordinates recorded from the Zoho template, so the output is the same document Zoho would have produced.
+- `LetterService::emailExitLetters()` attaches both letters to one email.
+- `ProcessTaskRunner` **throws unless every letter went out**, so a partial send leaves the step outstanding rather than silently ticked.
+- `hr:zoho-sign send --via=email|zoho` keeps the Zoho path available for when the licence allows it.
+
+The tradeoff: no countersigning, no audit trail, no signed-document webhook. The employee signs a PDF by hand. Restoring Zoho Sign is a licence purchase, not a code change.
+
+### Two template defects that need fixing in Zoho
+
+1. **Tech relieving letter has no name field anywhere** — Employee Name, Employee Address and the body blank are all unfilled. It goes out not saying who it is about.
+2. **Experience letters have a third name blank with no field defined**, so it stays empty.
+
+Both are content problems in the Zoho templates, not app bugs. The app can only fill fields that exist.
+
 
 ---
 
 ## In progress
 
-Nothing mid-flight. The build is at a clean checkpoint.
+Nothing mid-flight in code. The build is at a clean checkpoint: 193 tests passing, Pint clean.
+
+Two things are finished in code but not yet true in production:
+
+- `MAIL_MAILER=log`, so **no letter has actually been delivered to anyone**. The pipeline writes the rendered email to the Laravel log instead of sending it. Needs real SMTP credentials.
+- The push to GitHub is blocked on account permissions (see blockers), so the work is committed locally only.
 
 ---
 
 ## Next steps
 
-1. **Integrations** — Zoho Sign send + signature webhook (which will satisfy the gate automatically), Typeform webhooks with hidden `employee_id`, Zoom and Zoho provisioning behind the existing task hooks, Slack announcements. The pipelines already have the slots; the adapters are what is missing.
-2. **Google OAuth login** to replace password auth before anyone else uses it.
-3. **Leave and announcements** (Phase 4) — the 12:00 and Friday digests, holiday calendar, comp-off crediting.
-4. **Licence guard** — the billing-cycle-minus-3-days reminder for freed Zoom seats.
+1. **SMTP** — set real mail credentials so letters actually leave the server. Nothing else in offboarding matters until this is done.
+2. **Integrations** — Typeform webhooks with hidden `employee_id`, Zoom and Zoho provisioning behind the existing task hooks, Slack announcements. The pipelines already have the slots; the adapters are what is missing. The Zoho Sign send + signature webhook stays parked behind the licence.
+3. **Google OAuth login** to replace password auth before anyone else uses it.
+4. **Leave and announcements** (Phase 4) — the 12:00 and Friday digests, holiday calendar, comp-off crediting.
+5. **Licence guard** — the billing-cycle-minus-3-days reminder for freed Zoom seats.
 
 ### Honest limitation
 
@@ -139,13 +174,15 @@ Match confidence is computed at import time against whoever existed then. Becaus
 | # | Item | Impact |
 |---|---|---|
 | 1 | `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` | Without these the rotating Slack token cannot be refreshed and dies after ~12 hours |
-| 2 | Zoho **self-client refresh token** | The token in `.env` is a 1-hour access token, unusable for a real integration |
-| 3 | Zoho Sign **template id** | The link supplied is a signature *request*; the API needs a template. Convert it in Zoho Sign |
+| 2 | **SMTP credentials** | `MAIL_MAILER=log`. No letter reaches anyone until this is set. Highest-priority blocker — the offboarding pipeline is otherwise complete |
+| 3 | **Zoho Sign send licence** | Every send route returns a 400 licence error. Letters are emailed instead. A licence purchase restores signing; no code change needed |
 | 4 | Zoom Server-to-Server OAuth credentials | Blocks Zoom provisioning |
 | 5 | Typeform token + **hidden `employee_id` field on both forms** | Without the hidden field, future submissions still cannot be linked reliably |
 | 6 | Confirmed current roster | The CSVs are a 2022-23 archive, not a roster. Import cannot be reconciled without a list of who works here today |
 | 7 | Real destination mailboxes | The offboarding matrix uses placeholder addresses for "admin", "product", "services" |
 | 8 | Role template contents | Channels, groups and Bitwarden collections are placeholders pending HR input |
+| 9 | **Zoho template fixes** | Tech relieving letter has no name field; experience letters have an undefined third name blank. Letters go out incomplete until fixed in Zoho |
+| 10 | **GitHub push access** | `gh` is authenticated as `Sarthakvala`; the repo belongs to `Sarthakvala18` and returns `push: false` / 403. Work is committed locally only |
 
 **Decisions already made**
 - The app is the system of record; Zoho People is dropped (it cannot model the per-app access matrix).
@@ -160,3 +197,7 @@ Match confidence is computed at import time against whoever existed then. Becaus
 - `APP_KEY` encrypts every sensitive column. **Rotating or losing it makes bank details unrecoverable.** Back it up in Bitwarden; never rotate without a re-encryption migration.
 - The Slack tokens currently in `.env` passed through a chat transcript and should be rotated before go-live.
 - `.gitignore` blocks `.env`, `*.csv`, and `storage/imports/`. The real CSVs live at `hr-app/storage/imports/` and must never be committed.
+- **The GitHub repository is public.** For an HR application handling bank details and salaries, it should be private. The committed code is sanitised, but a public repo advertises the schema, the auth model and every validation gap to anyone who looks.
+- Letter artwork is excluded from git (`storage/app/.gitignore`) and must be uploaded to the server by hand — see DEPLOYMENT.md step 5. Keeping company letterhead out of a public repo is deliberate.
+- Two probe drafts (`...1550001`, `...1550014`) remain in the Zoho Sign account from testing. The delete endpoint refuses them on this licence; remove them from the Zoho UI.
+- Credentials that passed through a chat transcript and need rotating before go-live: the Slack user and refresh tokens, the Zoho Sign access token, the Zoho Self Client id/secret, and a GitHub PAT.

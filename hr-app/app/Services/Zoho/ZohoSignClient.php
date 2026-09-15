@@ -190,6 +190,47 @@ class ZohoSignClient
      *
      * @return array<string, string>
      */
+    /**
+     * Field label => geometry and type, as recorded by Zoho.
+     *
+     * These coordinates are what let the app stamp values onto the blank
+     * template PDF itself, which is how letters go out while the licence
+     * forbids sending through Zoho.
+     *
+     * A label can appear several times in one letter (a name repeated in the
+     * body, for instance), so every placement is kept. Stamping only the first
+     * would leave the other blanks empty.
+     *
+     * @return array<string, array<int, array{type: string, page: int, x: float, y: float, width: float, height: float}>>
+     */
+    public function templateFieldLayout(string $templateId): array
+    {
+        $template = $this->getTemplate($templateId);
+
+        $layout = [];
+
+        foreach ($template['document_fields'] ?? [] as $document) {
+            foreach ($document['fields'] ?? [] as $field) {
+                $label = $field['field_label'] ?? $field['field_name'] ?? null;
+
+                if ($label === null) {
+                    continue;
+                }
+
+                $layout[$label][] = [
+                    'type' => $field['field_type_name'] ?? 'Unknown',
+                    'page' => (int) ($field['page_no'] ?? 0),
+                    'x' => (float) ($field['x_coord'] ?? 0),
+                    'y' => (float) ($field['y_coord'] ?? 0),
+                    'width' => (float) ($field['abs_width'] ?? 0),
+                    'height' => (float) ($field['abs_height'] ?? 0),
+                ];
+            }
+        }
+
+        return $layout;
+    }
+
     public function templateFieldTypes(string $templateId): array
     {
         $template = $this->getTemplate($templateId);

@@ -3,15 +3,19 @@
 namespace Tests\Feature;
 
 use App\Enums\EmployeeStatus;
+use App\Enums\TaskStatus;
+use App\Mail\ExitLetterMail;
 use App\Models\Department;
 use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Services\Process\OffboardingRunBuilder;
+use App\Services\Process\ProcessTaskRunner;
 use App\Services\Zoho\LetterService;
 use App\Services\Zoho\ZohoSignClient;
 use Database\Seeders\DocumentTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -495,5 +499,228 @@ class ZohoSignTest extends TestCase
         $letters = $run->tasks->firstWhere('key', 'letters');
 
         $this->assertStringContainsString('ready to send', $letters->description_md);
+    }
+
+    // ------------------------------------------------------- sending both
+
+    private function readyTemplates(): void
+    {
+        DocumentTemplate::query()->update([
+            'zoho_template_id' => 'tpl-1',
+            'verified_at' => now(),
+        ]);
+    }
+
+    private function fakeZohoAccepting(): void
+    {
+        Http::fake([
+            'accounts.zoho.com/*' => Http::response(['access_token' => 'fresh-token']),
+            'sign.zoho.com/api/v1/templates/*/createdocument' => Http::response([
+                'status' => 'success',
+                'requests' => ['request_id' => 'req-1', 'request_status' => 'inprogress'],
+            ]),
+            'sign.zoho.com/api/v1/templates/*' => Http::response([
+                'status' => 'success',
+                'templates' => ['actions' => [[
+                    'action_id' => 'act-1',
+                    'action_type' => 'SIGN',
+                    'recipient_name' => '',
+                    'recipient_email' => '',
+                ]]],
+            ]),
+        ]);
+    }
+
+    public function test_sending_exit_letters_dispatches_both_documents(): void
+    {
+        $this->fakeZohoAccepting();
+        $this->readyTemplates();
+
+        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
+
+        $results = app(LetterService::class)->sendExitLetters($employee, quickSend: true);
+
+        $this->assertCount(2, $results);
+        $this->assertEqualsCanonicalizing(
+            [DocumentTemplate::TYPE_RELIEVING, DocumentTemplate::TYPE_EXPERIENCE],
+            array_column($results, 'type'),
+        );
+        $this->assertSame([true, true], array_column($results, 'ok'));
+    }
+
+    /**
+     * A failure on one letter must not hide that the other already went out,
+     * so each result is reported separately rather than collapsed.
+     */
+    public function test_one_failing_letter_does_not_hide_the_one_that_sent(): void
+    {
+        $this->fakeZohoAccepting();
+        $this->readyTemplates();
+
+        // The tech relieving letter needs a manager; leave that unset so it
+        // fails while the experience letter still succeeds.
+        $employee = $this->leaver('tech', [
+            'personal_email' => 'ravi@example.com',
+            'manager_id' => null,
+        ]);
+
+        $results = app(LetterService::class)->sendExitLetters($employee, quickSend: true);
+
+        $byType = collect($results)->keyBy('type');
+
+        $this->assertFalse($byType[DocumentTemplate::TYPE_RELIEVING]['ok']);
+        $this->assertStringContainsString('report_to', $byType[DocumentTemplate::TYPE_RELIEVING]['error']);
+        $this->assertTrue($byType[DocumentTemplate::TYPE_EXPERIENCE]['ok']);
+    }
+
+    public function test_a_licence_failure_is_reported_per_letter_not_as_a_crash(): void
+    {
+        Http::fake([
+            'accounts.zoho.com/*' => Http::response(['access_token' => 'fresh-token']),
+            'sign.zoho.com/api/v1/templates/*/createdocument' => Http::response([
+                'status' => 'failure',
+                'message' => 'Upgrade Zoho Sign license to send documents via API.',
+            ], 400),
+            'sign.zoho.com/api/v1/templates/*' => Http::response([
+                'status' => 'success',
+                'templates' => ['actions' => [['action_id' => 'act-1', 'action_type' => 'SIGN']]],
+            ]),
+        ]);
+        $this->readyTemplates();
+
+        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
+
+        $results = app(LetterService::class)->sendExitLetters($employee, quickSend: true);
+
+        $this->assertSame([false, false], array_column($results, 'ok'));
+        foreach ($results as $result) {
+            $this->assertStringContainsString('plan does not allow sending', $result['error']);
+        }
+    }
+
+    // ------------------------------------------ the pipeline step must send
+
+    public function test_completing_the_letters_step_actually_sends_them(): void
+    {
+        Mail::fake();
+        $this->fakeZohoAccepting();
+        $this->readyTemplates();
+
+        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
+        $run = app(OffboardingRunBuilder::class)->build($employee);
+        $letters = $run->tasks->firstWhere('key', 'letters');
+
+        // Clear the dependency chain so the step is reachable.
+        $letters->update(['status' => TaskStatus::Pending, 'depends_on' => null]);
+
+        app(ProcessTaskRunner::class)->complete($letters->refresh());
+
+        $letters->refresh();
+
+        $this->assertSame(TaskStatus::Done, $letters->status);
+        $this->assertCount(2, $letters->result);
+        $this->assertStringContainsString('Emailed to', $letters->evidence);
+
+        Mail::assertSent(ExitLetterMail::class, function (ExitLetterMail $mail) use ($employee) {
+            return $mail->hasTo($employee->personal_email)
+                && count($mail->letters) === 2;
+        });
+    }
+
+    /**
+     * The whole point of the pipeline is that a step cannot claim work it did
+     * not do. If the send fails, the step stays outstanding.
+     */
+    public function test_the_letters_step_stays_open_when_sending_fails(): void
+    {
+        $this->readyTemplates();
+
+        // Without artwork the letters cannot be rendered, so nothing can go out.
+        DocumentTemplate::query()->update(['pdf_path' => null]);
+
+        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
+        $run = app(OffboardingRunBuilder::class)->build($employee);
+        $letters = $run->tasks->firstWhere('key', 'letters');
+        $letters->update(['status' => TaskStatus::Pending, 'depends_on' => null]);
+
+        try {
+            app(ProcessTaskRunner::class)->complete($letters->refresh());
+            $this->fail('Completing the step should have thrown when no letter was sent.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('No letters were sent', $e->getMessage());
+        }
+
+        $this->assertNotSame(TaskStatus::Done, $letters->refresh()->status);
+    }
+
+    // --------------------------------------------- filling gaps at send time
+
+    public function test_missing_fields_are_reported_across_both_letters(): void
+    {
+        $employee = $this->leaver('tech', ['manager_id' => null]);
+
+        $missing = app(LetterService::class)->missingFor($employee);
+
+        // The tech relieving letter needs a manager name; nothing else is short.
+        $this->assertContains('report_to', $missing);
+    }
+
+    /**
+     * The same underlying gap must be asked for once, not once per label.
+     */
+    public function test_aliased_gaps_are_only_asked_for_once(): void
+    {
+        $employee = $this->leaver('operations', ['date_of_exit' => null]);
+
+        $missing = app(LetterService::class)->missingFor($employee);
+
+        $dateKeys = array_intersect($missing, ['last_date', 'leaving_date']);
+
+        $this->assertCount(1, $dateKeys, 'The last working day was asked for twice');
+    }
+
+    public function test_a_supplied_value_closes_the_gap_without_editing_the_record(): void
+    {
+        $employee = $this->leaver('tech', ['manager_id' => null]);
+        $service = app(LetterService::class);
+
+        $this->assertNotEmpty($service->missingFor($employee));
+        $this->assertSame([], $service->missingFor($employee, ['report_to' => 'Mehak Bhatia']));
+    }
+
+    /** Filling one alias fills its partners, since they carry the same value. */
+    public function test_supplying_one_alias_satisfies_the_others(): void
+    {
+        $employee = $this->leaver('operations', ['date_of_exit' => null]);
+        $service = app(LetterService::class);
+
+        $values = $service->logicalValues($employee, ['leaving_date' => '30/09/2026']);
+
+        $this->assertSame('30/09/2026', $values['leaving_date']);
+        $this->assertSame('30/09/2026', $values['last_date']);
+    }
+
+    public function test_supplied_values_reach_the_zoho_payload(): void
+    {
+        $this->fakeZohoAccepting();
+        $this->readyTemplates();
+
+        $employee = $this->leaver('tech', [
+            'manager_id' => null,
+            'personal_email' => 'ravi@example.com',
+        ]);
+
+        $results = app(LetterService::class)->sendExitLetters(
+            $employee,
+            quickSend: true,
+            context: ['report_to' => 'Mehak Bhatia'],
+        );
+
+        $this->assertSame([true, true], array_column($results, 'ok'));
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'createdocument')
+                && str_contains((string) $request->body(), 'Mehak Bhatia');
+        });
     }
 }

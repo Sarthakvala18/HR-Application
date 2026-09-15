@@ -8,13 +8,16 @@ use App\Enums\TaskStatus;
 use App\Models\App as AppModel;
 use App\Models\AppAccess;
 use App\Models\Department;
+use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Models\ProcessRun;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Process\OffboardingRunBuilder;
 use App\Services\Process\ProcessTaskRunner;
+use Database\Seeders\DocumentTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class OffboardingPipelineTest extends TestCase
@@ -163,7 +166,32 @@ class OffboardingPipelineTest extends TestCase
 
     public function test_finishing_the_run_marks_the_person_exited(): void
     {
-        $employee = $this->leaver();
+        // The letters step genuinely dispatches documents now, so the run
+        // cannot be walked to completion without templates and a stubbed API.
+        $this->seed(DocumentTemplateSeeder::class);
+        DocumentTemplate::query()->update([
+            'zoho_template_id' => 'tpl-1',
+            'verified_at' => now(),
+        ]);
+        Http::fake([
+            'accounts.zoho.com/*' => Http::response(['access_token' => 't']),
+            'sign.zoho.com/api/v1/templates/*/createdocument' => Http::response([
+                'status' => 'success',
+                'requests' => ['request_id' => 'req-1'],
+            ]),
+            'sign.zoho.com/api/v1/templates/*' => Http::response([
+                'status' => 'success',
+                'templates' => ['actions' => [['action_id' => 'a1', 'action_type' => 'SIGN']]],
+            ]),
+        ]);
+
+        $employee = $this->leaver(attributes: [
+            'personal_email' => 'leaver@example.com',
+            'employee_code' => 'CF-5001',
+            'position' => 'Client Manager',
+            'date_of_joining' => '2023-02-01',
+            'date_of_exit' => '2026-09-30',
+        ]);
         $run = app(OffboardingRunBuilder::class)->build($employee);
         $runner = app(ProcessTaskRunner::class);
 

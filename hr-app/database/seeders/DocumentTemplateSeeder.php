@@ -40,6 +40,8 @@ class DocumentTemplateSeeder extends Seeder
                     'date_fields' => $template['date_fields'] ?? [],
                     'signature_fields' => $template['signature_fields'] ?? [],
                     'notes' => $template['notes'] ?? null,
+                    'pdf_path' => $this->artwork()[$template['name']]['pdf_path'] ?? null,
+                    'field_positions' => $this->artwork()[$template['name']]['field_positions'] ?? null,
                     'active' => true,
                 ],
             );
@@ -113,6 +115,343 @@ class DocumentTemplateSeeder extends Seeder
                 'field_map' => $experienceFields,
                 'date_fields' => ['joining_date', 'leaving_date'],
                 'signature_fields' => ['signature'],
+            ],
+        ];
+    }
+
+    /**
+     * The blank letter PDF and the field geometry for each template,
+     * captured from Zoho on 2026-09-08 with `templateFieldLayout()`.
+     *
+     * Coordinates are in points from the top-left of the page. A label can
+     * appear more than once, so each holds a list of placements.
+     */
+    private function artwork(): array
+    {
+        return [
+            'Relieving Letter tech detailed' => [
+                'pdf_path' => 'letter-templates/relieving-tech.pdf',
+                'field_positions' => [
+                    'Sign date' => [
+                        [
+                            'type' => 'Date',
+                            'page' => 0,
+                            'x' => 99,
+                            'y' => 149,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Date',
+                            'page' => 1,
+                            'x' => 102,
+                            'y' => 320,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Employee ID' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 138,
+                            'y' => 205,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Job Title' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 149,
+                            'y' => 318,
+                            'width' => 179,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Report to' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 477,
+                            'y' => 318,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Join Date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 106,
+                            'y' => 331,
+                            'width' => 56,
+                            'height' => 11,
+                        ],
+                    ],
+                    'Last Date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 186,
+                            'y' => 331,
+                            'width' => 56,
+                            'height' => 11,
+                        ],
+                    ],
+                ],
+            ],
+            'Relieving Letter operations detailed' => [
+                'pdf_path' => 'letter-templates/relieving-operations.pdf',
+                'field_positions' => [
+                    'Sign date' => [
+                        [
+                            'type' => 'Date',
+                            'page' => 0,
+                            'x' => 99,
+                            'y' => 130,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Date',
+                            'page' => 1,
+                            'x' => 98,
+                            'y' => 311,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Full name' => [
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 88,
+                            'y' => 148,
+                            'width' => 218,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 251,
+                            'y' => 299,
+                            'width' => 117,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 119,
+                            'y' => 633,
+                            'width' => 96,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Employee ID' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 139,
+                            'y' => 185,
+                            'width' => 291,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Job Title' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 79,
+                            'y' => 312,
+                            'width' => 162,
+                            'height' => 15,
+                        ],
+                    ],
+                    'Join date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 102,
+                            'y' => 327,
+                            'width' => 64,
+                            'height' => 11,
+                        ],
+                    ],
+                    'End Date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 188,
+                            'y' => 326,
+                            'width' => 73,
+                            'height' => 11,
+                        ],
+                    ],
+                ],
+            ],
+            'Experience Letter Tech' => [
+                'pdf_path' => 'letter-templates/experience-tech.pdf',
+                'field_positions' => [
+                    'Full name' => [
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 181,
+                            'y' => 184,
+                            'width' => 91,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 172,
+                            'y' => 226,
+                            'width' => 91,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Role' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 422,
+                            'y' => 184,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Joining date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 186,
+                            'y' => 199,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Leaving date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 300,
+                            'y' => 199,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'HR Name' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 72,
+                            'y' => 467,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Signature' => [
+                        [
+                            'type' => 'Signature',
+                            'page' => 0,
+                            'x' => 185,
+                            'y' => 618,
+                            'width' => 225,
+                            'height' => 39,
+                        ],
+                    ],
+                ],
+            ],
+            'Experience Letter - Operations' => [
+                'pdf_path' => 'letter-templates/experience-operations.pdf',
+                'field_positions' => [
+                    'Full name' => [
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 172,
+                            'y' => 186,
+                            'width' => 91,
+                            'height' => 17,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 164,
+                            'y' => 224,
+                            'width' => 91,
+                            'height' => 14,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 122,
+                            'y' => 299,
+                            'width' => 88,
+                            'height' => 14,
+                        ],
+                        [
+                            'type' => 'Name',
+                            'page' => 0,
+                            'x' => 268,
+                            'y' => 336,
+                            'width' => 88,
+                            'height' => 14,
+                        ],
+                    ],
+                    'Role' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 420,
+                            'y' => 188,
+                            'width' => 94,
+                            'height' => 15,
+                        ],
+                    ],
+                    'Joining date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 201,
+                            'y' => 203,
+                            'width' => 83,
+                            'height' => 15,
+                        ],
+                    ],
+                    'Leaving date' => [
+                        [
+                            'type' => 'CustomDate',
+                            'page' => 0,
+                            'x' => 298,
+                            'y' => 202,
+                            'width' => 93,
+                            'height' => 15,
+                        ],
+                    ],
+                    'HR Name' => [
+                        [
+                            'type' => 'Textfield',
+                            'page' => 0,
+                            'x' => 72,
+                            'y' => 435,
+                            'width' => 98,
+                            'height' => 17,
+                        ],
+                    ],
+                    'Signature' => [
+                        [
+                            'type' => 'Signature',
+                            'page' => 0,
+                            'x' => 183,
+                            'y' => 499,
+                            'width' => 225,
+                            'height' => 39,
+                        ],
+                    ],
+                ],
             ],
         ];
     }

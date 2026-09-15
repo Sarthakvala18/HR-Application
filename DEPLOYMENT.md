@@ -135,7 +135,22 @@ If you cannot change the webroot, the application will expose its source files. 
 chmod -R 775 storage bootstrap/cache
 ```
 
-### 5. Cache for production
+### 5. Upload the letter templates
+
+The four letter PDFs are deliberately **not** in git (`storage/app/.gitignore` excludes them, and the repository is public). Without them the offboarding letters step throws `Letter PDF not found at ...`.
+
+Upload these to `storage/app/letter-templates/` on the server:
+
+| File | Used for |
+| --- | --- |
+| `relieving-tech.pdf` | Relieving letter, Tech |
+| `relieving-operations.pdf` | Relieving letter, Operations |
+| `experience-tech.pdf` | Experience letter, Tech |
+| `experience-operations.pdf` | Experience letter, Operations |
+
+The filenames must match exactly - `DocumentTemplateSeeder` stores these paths, and the stamping coordinates are tied to this specific artwork. Replacing a PDF with a re-laid-out version will put text in the wrong place.
+
+### 6. Cache for production
 
 ```bash
 php artisan config:cache

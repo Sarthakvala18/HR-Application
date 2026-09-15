@@ -13,11 +13,13 @@ use Throwable;
 class ZohoSignCommand extends Command
 {
     protected $signature = 'hr:zoho-sign
-        {action=ping : ping, exchange, templates, verify, or preview}
+        {action=ping : ping, exchange, templates, verify, preview, or send}
         {--code= : Self Client grant code, for exchange}
         {--employee= : Employee id or name, for preview}
         {--template= : Template id, for verify}
-        {--type= : relieving or experience; omit to preview both}';
+        {--type= : relieving or experience; omit for both}
+        {--force : Skip the confirmation prompt when sending}
+        {--via=email : email (fill and attach) or zoho (send for signature)}';
 
     protected $description = 'Check the Zoho Sign connection and test letter templates';
 
@@ -29,13 +31,152 @@ class ZohoSignCommand extends Command
             'templates' => $this->templates($client),
             'verify' => $this->verify($client),
             'preview' => $this->preview(),
+            'send' => $this->send(),
             default => $this->invalid(),
         };
     }
 
+    // ------------------------------------------------------------------ send
+
+    /**
+     * Sends the exit letters for real. Separate from preview on purpose: this
+     * one puts documents in front of a person.
+     */
+    private function send(): int
+    {
+        $employee = $this->resolveEmployee();
+
+        if ($employee === null) {
+            return self::FAILURE;
+        }
+
+        $recipient = $employee->personal_email ?: $employee->work_email;
+
+        if (blank($recipient)) {
+            $this->error('No email address on record for '.$employee->full_name.'.');
+
+            return self::FAILURE;
+        }
+
+        $service = app(LetterService::class);
+        $type = $this->option('type');
+
+        $templates = $type
+            ? array_filter([DocumentTemplate::resolve($type, $employee->department_id)])
+            : $service->exitTemplatesFor($employee);
+
+        if ($templates === []) {
+            $this->error('No matching letter templates for this department.');
+
+            return self::FAILURE;
+        }
+
+        $this->warn('About to send real documents for signature:');
+        foreach ($templates as $template) {
+            $this->line('  - '.$template->name.' ('.$template->type.')');
+        }
+        $this->line('Recipient: '.$recipient);
+        $this->line('Delivery: '.($this->option('via') === 'zoho'
+            ? 'Zoho Sign, for signature'
+            : 'email with the filled letters attached'));
+        $this->newLine();
+
+        // Ask for anything the letters need rather than failing at send.
+        $context = $this->collectMissing($service, $employee);
+
+        if (! $this->option('force') && ! $this->confirm('Send now?', false)) {
+            $this->comment('Nothing sent.');
+
+            return self::SUCCESS;
+        }
+
+        $viaZoho = $this->option('via') === 'zoho';
+
+        if ($viaZoho) {
+            $results = $type
+                ? [$this->sendOne($service, $employee, $templates[array_key_first($templates)], $context)]
+                : $service->sendExitLetters($employee, quickSend: true, context: $context);
+        } else {
+            // Default route: fill the letters locally and email them, which is
+            // what works while the Zoho licence forbids sending.
+            $results = $service->emailExitLetters($employee, $context);
+        }
+
+        $this->newLine();
+        $this->table(
+            ['Letter', 'Result', 'Request / error'],
+            array_map(fn (array $r) => [
+                $r['template'],
+                $r['ok'] ? 'sent' : 'FAILED',
+                $r['ok'] ? ($r['request_id'] ?? 'attached') : $r['error'],
+            ], $results),
+        );
+
+        return array_filter($results, fn (array $r) => ! $r['ok']) === []
+            ? self::SUCCESS
+            : self::FAILURE;
+    }
+
+    /**
+     * Prompts for anything the letters still need.
+     *
+     * @return array<string, string>
+     */
+    private function collectMissing(LetterService $service, Employee $employee): array
+    {
+        $missing = $service->missingFor($employee);
+
+        if ($missing === []) {
+            return [];
+        }
+
+        $this->warn('Missing from '.$employee->full_name.'\'s record, required by the letters:');
+
+        $context = [];
+
+        foreach ($missing as $key) {
+            $label = LetterService::FIELD_LABELS[$key] ?? str_replace('_', ' ', $key);
+
+            $hint = in_array($key, LetterService::DATE_KEYS, true) ? ' (dd/mm/yyyy)' : '';
+
+            $context[$key] = $this->ask('  '.$label.$hint);
+        }
+
+        $this->newLine();
+
+        return array_filter($context, fn ($value) => filled($value));
+    }
+
+    private function sendOne(
+        LetterService $service,
+        Employee $employee,
+        DocumentTemplate $template,
+        array $context = [],
+    ): array {
+        try {
+            $response = $service->sendTemplate($employee, $template, quickSend: true, context: $context);
+
+            return [
+                'type' => $template->type,
+                'template' => $template->name,
+                'ok' => true,
+                'request_id' => $response['request_id'] ?? null,
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'type' => $template->type,
+                'template' => $template->name,
+                'ok' => false,
+                'request_id' => null,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
     private function invalid(): int
     {
-        $this->error('Action must be one of: ping, exchange, templates, verify, preview');
+        $this->error('Action must be one of: ping, exchange, templates, verify, preview, send');
 
         return self::FAILURE;
     }

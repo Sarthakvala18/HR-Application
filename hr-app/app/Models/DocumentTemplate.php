@@ -37,6 +37,7 @@ class DocumentTemplate extends Model
             'date_fields' => 'array',
             'signature_fields' => 'array',
             'field_types' => 'array',
+            'field_positions' => 'array',
             'is_default' => 'boolean',
             'active' => 'boolean',
             'verified_at' => 'datetime',
