@@ -137,9 +137,11 @@ chmod -R 775 storage bootstrap/cache
 
 ### 5. Upload the letter templates
 
-The four letter PDFs are deliberately **not** in git (`storage/app/.gitignore` excludes them, and the repository is public). Without them the offboarding letters step throws `Letter PDF not found at ...`.
+**If you deployed from the zip, skip this step** - the build script includes `storage/app/letter-templates/`, so the PDFs are already there.
 
-Upload these to `storage/app/letter-templates/` on the server:
+This step matters when deploying from a **git clone**. The four letter PDFs are deliberately not in git (`storage/app/.gitignore` excludes them, and the repository is public), so a clone has no letter artwork and the offboarding letters step throws `Letter PDF not found at ...`.
+
+In that case, copy these into `storage/app/letter-templates/`:
 
 | File | Used for |
 | --- | --- |
