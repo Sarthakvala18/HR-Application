@@ -5,23 +5,24 @@ namespace Tests\Feature;
 use App\Enums\AccessStatus;
 use App\Enums\EmployeeStatus;
 use App\Enums\TaskStatus;
+use App\Mail\ExitLetterMail;
 use App\Models\App as AppModel;
 use App\Models\AppAccess;
 use App\Models\Department;
-use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Models\ProcessRun;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Process\OffboardingRunBuilder;
 use App\Services\Process\ProcessTaskRunner;
-use Database\Seeders\DocumentTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\MakesLetterhead;
 use Tests\TestCase;
 
 class OffboardingPipelineTest extends TestCase
 {
+    use MakesLetterhead;
     use RefreshDatabase;
 
     /** A person holding live access to Google, Bitwarden, Zoom and Slack. */
@@ -166,24 +167,11 @@ class OffboardingPipelineTest extends TestCase
 
     public function test_finishing_the_run_marks_the_person_exited(): void
     {
-        // The letters step genuinely dispatches documents now, so the run
-        // cannot be walked to completion without templates and a stubbed API.
-        $this->seed(DocumentTemplateSeeder::class);
-        DocumentTemplate::query()->update([
-            'zoho_template_id' => 'tpl-1',
-            'verified_at' => now(),
-        ]);
-        Http::fake([
-            'accounts.zoho.com/*' => Http::response(['access_token' => 't']),
-            'sign.zoho.com/api/v1/templates/*/createdocument' => Http::response([
-                'status' => 'success',
-                'requests' => ['request_id' => 'req-1'],
-            ]),
-            'sign.zoho.com/api/v1/templates/*' => Http::response([
-                'status' => 'success',
-                'templates' => ['actions' => [['action_id' => 'a1', 'action_type' => 'SIGN']]],
-            ]),
-        ]);
+        // The letters step genuinely dispatches documents, so the run cannot be
+        // walked to completion unless they build and send. They are composed on
+        // the letterhead now, so no Zoho template or stubbed API is involved.
+        $this->fakeLetterhead();
+        Mail::fake();
 
         $employee = $this->leaver(attributes: [
             'personal_email' => 'leaver@example.com',
@@ -192,6 +180,12 @@ class OffboardingPipelineTest extends TestCase
             'date_of_joining' => '2023-02-01',
             'date_of_exit' => '2026-09-30',
         ]);
+
+        // The relieving letter states who the leaver reported to.
+        $employee->update([
+            'manager_id' => Employee::factory()->create(['full_name' => 'Team Lead'])->id,
+        ]);
+
         $run = app(OffboardingRunBuilder::class)->build($employee);
         $runner = app(ProcessTaskRunner::class);
 
@@ -207,6 +201,13 @@ class OffboardingPipelineTest extends TestCase
         $this->assertSame('completed', $run->refresh()->status);
         $this->assertSame(EmployeeStatus::Exited, $employee->refresh()->status);
         $this->assertNotNull($employee->date_of_exit);
+
+        // Completing the run has to mean the letters actually went out.
+        Mail::assertSent(
+            ExitLetterMail::class,
+            fn (ExitLetterMail $mail) => $mail->hasTo('leaver@example.com')
+                && count($mail->letters) === 2,
+        );
     }
 
     public function test_an_urgent_run_is_flagged(): void

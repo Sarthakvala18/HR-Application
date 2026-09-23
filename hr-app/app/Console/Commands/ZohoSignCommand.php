@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\WritesEnvFile;
 use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Services\Zoho\LetterService;
@@ -12,6 +13,8 @@ use Throwable;
 
 class ZohoSignCommand extends Command
 {
+    use WritesEnvFile;
+
     protected $signature = 'hr:zoho-sign
         {action=ping : ping, exchange, templates, verify, preview, or send}
         {--code= : Self Client grant code, for exchange}
@@ -255,35 +258,6 @@ class ZohoSignCommand extends Command
         $this->error('Saved, but the connection check failed: '.$result['detail']);
 
         return self::FAILURE;
-    }
-
-    /** Replaces or appends a key in .env, keeping a timestamped backup. */
-    private function writeEnv(string $key, string $value): bool
-    {
-        $path = base_path('.env');
-
-        if (! is_writable($path)) {
-            return false;
-        }
-
-        copy($path, $path.'.bak-'.now()->format('Ymd-His'));
-
-        $contents = file_get_contents($path);
-        $line = $key.'='.$value;
-
-        $updated = preg_replace(
-            '/^'.preg_quote($key, '/').'=.*$/m',
-            $line,
-            $contents,
-            1,
-            $count,
-        );
-
-        if ($count === 0) {
-            $updated = rtrim($contents, "\n")."\n".$line."\n";
-        }
-
-        return file_put_contents($path, $updated) !== false;
     }
 
     // ------------------------------------------------------------------ ping

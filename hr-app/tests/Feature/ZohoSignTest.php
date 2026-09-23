@@ -3,19 +3,15 @@
 namespace Tests\Feature;
 
 use App\Enums\EmployeeStatus;
-use App\Enums\TaskStatus;
-use App\Mail\ExitLetterMail;
 use App\Models\Department;
 use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Services\Process\OffboardingRunBuilder;
-use App\Services\Process\ProcessTaskRunner;
 use App\Services\Zoho\LetterService;
 use App\Services\Zoho\ZohoSignClient;
 use Database\Seeders\DocumentTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -598,60 +594,10 @@ class ZohoSignTest extends TestCase
         }
     }
 
-    // ------------------------------------------ the pipeline step must send
-
-    public function test_completing_the_letters_step_actually_sends_them(): void
-    {
-        Mail::fake();
-        $this->fakeZohoAccepting();
-        $this->readyTemplates();
-
-        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
-        $run = app(OffboardingRunBuilder::class)->build($employee);
-        $letters = $run->tasks->firstWhere('key', 'letters');
-
-        // Clear the dependency chain so the step is reachable.
-        $letters->update(['status' => TaskStatus::Pending, 'depends_on' => null]);
-
-        app(ProcessTaskRunner::class)->complete($letters->refresh());
-
-        $letters->refresh();
-
-        $this->assertSame(TaskStatus::Done, $letters->status);
-        $this->assertCount(2, $letters->result);
-        $this->assertStringContainsString('Emailed to', $letters->evidence);
-
-        Mail::assertSent(ExitLetterMail::class, function (ExitLetterMail $mail) use ($employee) {
-            return $mail->hasTo($employee->personal_email)
-                && count($mail->letters) === 2;
-        });
-    }
-
-    /**
-     * The whole point of the pipeline is that a step cannot claim work it did
-     * not do. If the send fails, the step stays outstanding.
-     */
-    public function test_the_letters_step_stays_open_when_sending_fails(): void
-    {
-        $this->readyTemplates();
-
-        // Without artwork the letters cannot be rendered, so nothing can go out.
-        DocumentTemplate::query()->update(['pdf_path' => null]);
-
-        $employee = $this->leaver('operations', ['personal_email' => 'anita@example.com']);
-        $run = app(OffboardingRunBuilder::class)->build($employee);
-        $letters = $run->tasks->firstWhere('key', 'letters');
-        $letters->update(['status' => TaskStatus::Pending, 'depends_on' => null]);
-
-        try {
-            app(ProcessTaskRunner::class)->complete($letters->refresh());
-            $this->fail('Completing the step should have thrown when no letter was sent.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('No letters were sent', $e->getMessage());
-        }
-
-        $this->assertNotSame(TaskStatus::Done, $letters->refresh()->status);
-    }
+    // The two pipeline-send tests that lived here moved to
+    // LetterSendScreenTest: the offboarding step now composes letters on the
+    // company letterhead and emails them, so asserting it from a Zoho test
+    // implied an integration that is no longer in that path.
 
     // --------------------------------------------- filling gaps at send time
 

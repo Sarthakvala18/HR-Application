@@ -4,11 +4,12 @@ namespace App\Filament\Resources\ProcessRuns\RelationManagers;
 
 use App\Enums\TaskStatus;
 use App\Models\ProcessTask;
+use App\Services\Letters\ExitLetterDispatcher;
 use App\Services\Process\ProcessTaskRunner;
-use App\Services\Zoho\LetterService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -17,6 +18,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use InvalidArgumentException;
 use RuntimeException;
 
 class TasksRelationManager extends RelationManager
@@ -83,6 +85,7 @@ class TasksRelationManager extends RelationManager
             ])
             ->recordActions([
                 $this->instructionsAction(),
+                $this->previewLettersAction(),
                 $this->completeAction(),
                 $this->skipAction(),
             ]);
@@ -105,6 +108,67 @@ class TasksRelationManager extends RelationManager
             ->modalCancelActionLabel('Close');
     }
 
+    /**
+     * Downloads a letter exactly as the employee would receive it.
+     *
+     * Sending an exit letter cannot be undone, so being able to read the real
+     * document first is the difference between a checklist and a review.
+     */
+    private function previewLettersAction(): Action
+    {
+        return Action::make('previewLetters')
+            ->label('Preview')
+            ->icon(Heroicon::OutlinedEye)
+            ->color('gray')
+            ->visible(fn (ProcessTask $record) => $record->key === ProcessTaskRunner::LETTERS_KEY
+                && $record->run->employee !== null)
+            ->modalHeading('Preview a letter')
+            ->modalDescription('Downloads the finished PDF. Nothing is sent.')
+            ->modalSubmitActionLabel('Download')
+            ->schema(fn (ProcessTask $record) => [
+                Select::make('type')
+                    ->label('Letter')
+                    ->options(array_combine(
+                        ExitLetterDispatcher::TYPES,
+                        app(ExitLetterDispatcher::class)->titlesFor($record->run->employee),
+                    ))
+                    ->default(ExitLetterDispatcher::TYPES[0])
+                    ->selectablePlaceholder(false)
+                    ->required(),
+                ...$this->missingLetterFields($record, forPreview: true),
+            ])
+            ->action(function (ProcessTask $record, array $data) {
+                $employee = $record->run->employee;
+
+                // Preview values are not written to the record: someone
+                // checking how a letter looks should not silently change data.
+                $context = array_merge(
+                    $record->payload['supplied'] ?? [],
+                    array_filter($data['supplied'] ?? []),
+                );
+
+                try {
+                    $letter = app(ExitLetterDispatcher::class)
+                        ->renderOne($employee, $data['type'], $context);
+                } catch (RuntimeException|InvalidArgumentException $e) {
+                    Notification::make()
+                        ->title('Could not build the preview')
+                        ->body($e->getMessage())
+                        ->danger()
+                        ->persistent()
+                        ->send();
+
+                    return null;
+                }
+
+                return response()->streamDownload(
+                    fn () => print $letter['pdf'],
+                    $letter['name'],
+                    ['Content-Type' => 'application/pdf'],
+                );
+            });
+    }
+
     private function completeAction(): Action
     {
         return Action::make('complete')
@@ -120,7 +184,7 @@ class TasksRelationManager extends RelationManager
                 ? 'Send the exit letters'
                 : null)
             ->modalDescription(fn (ProcessTask $record) => $record->key === ProcessTaskRunner::LETTERS_KEY
-                ? 'This sends the relieving and experience letters to the employee for signature through Zoho Sign. The step stays open if any letter fails.'
+                ? $this->sendSummary($record)
                 : null)
             ->icon(Heroicon::OutlinedCheckCircle)
             ->color('success')
@@ -172,11 +236,31 @@ class TasksRelationManager extends RelationManager
     }
 
     /**
+     * States plainly what is about to happen, so nobody sends exit documents
+     * without seeing the recipient first.
+     */
+    private function sendSummary(ProcessTask $task): string
+    {
+        $dispatcher = app(ExitLetterDispatcher::class);
+        $employee = $task->run->employee;
+
+        if ($employee === null) {
+            return 'This run has no employee attached.';
+        }
+
+        $recipient = $dispatcher->recipientFor($employee) ?? 'no address on record';
+
+        return 'Emails '.implode(' and ', $dispatcher->titlesFor($employee))
+            .' to '.$employee->full_name.' at '.$recipient
+            .'. The step stays open if any letter fails, and nothing is sent unless both build.';
+    }
+
+    /**
      * Form inputs for everything the exit letters still need.
      *
      * @return array<int, mixed>
      */
-    private function missingLetterFields(ProcessTask $task): array
+    private function missingLetterFields(ProcessTask $task, bool $forPreview = false): array
     {
         $employee = $task->run->employee;
 
@@ -184,27 +268,30 @@ class TasksRelationManager extends RelationManager
             return [];
         }
 
-        $missing = app(LetterService::class)->missingFor($employee);
+        $context = $task->payload['supplied'] ?? [];
+        $missing = app(ExitLetterDispatcher::class)->missingFor($employee, $context);
 
         if ($missing === []) {
-            return [
+            return $forPreview ? [] : [
                 Placeholder::make('ready')
                     ->label('')
-                    ->content('Everything the letters need is on file. Sending both now.'),
+                    ->content('Everything the letters need is on file.'),
             ];
         }
 
         $fields = [
             Placeholder::make('why')
                 ->label('')
-                ->content('These are missing from '.$employee->full_name
-                    .'\'s record and are required by the letters. They will be saved to the record as well as used here.'),
+                ->content($forPreview
+                    ? 'These are missing from the record. Values entered here are used for the preview only and are not saved.'
+                    : 'These are missing from '.$employee->full_name
+                        .'\'s record and are required by the letters. They will be saved to the record as well as used here.'),
         ];
 
         foreach ($missing as $key) {
-            $label = LetterService::FIELD_LABELS[$key] ?? str_replace('_', ' ', $key);
+            $label = ExitLetterDispatcher::FIELD_LABELS[$key] ?? str_replace('_', ' ', $key);
 
-            $fields[] = in_array($key, LetterService::DATE_KEYS, true)
+            $fields[] = in_array($key, ExitLetterDispatcher::DATE_KEYS, true)
                 ? DatePicker::make('supplied.'.$key)->label($label)->required()->native(false)
                 : TextInput::make('supplied.'.$key)->label($label)->required();
         }
@@ -225,21 +312,11 @@ class TasksRelationManager extends RelationManager
             return;
         }
 
-        $columns = [
-            'employee_id' => 'employee_code',
-            'job_title' => 'position',
-            'role' => 'position',
-            'join_date' => 'date_of_joining',
-            'joining_date' => 'date_of_joining',
-            'last_date' => 'date_of_exit',
-            'leaving_date' => 'date_of_exit',
-        ];
-
         $updates = [];
 
         foreach ($supplied as $key => $value) {
-            if (isset($columns[$key])) {
-                $updates[$columns[$key]] = $value;
+            if (isset(ExitLetterDispatcher::COLUMNS[$key])) {
+                $updates[ExitLetterDispatcher::COLUMNS[$key]] = $value;
             }
         }
 

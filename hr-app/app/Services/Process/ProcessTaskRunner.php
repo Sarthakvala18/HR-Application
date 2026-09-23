@@ -10,7 +10,7 @@ use App\Models\ProcessRun;
 use App\Models\ProcessTask;
 use App\Models\User;
 use App\Services\AuditLogger;
-use App\Services\Zoho\LetterService;
+use App\Services\Letters\ExitLetterDispatcher;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -41,13 +41,14 @@ class ProcessTaskRunner
         }
 
         // Values the sender supplied for gaps that have no column of their own,
-        // such as "Reports to" or the HR signatory name.
+        // such as "Reported to" or the HR signatory name.
         $context = $task->payload['supplied'] ?? [];
 
-        // Emailed rather than dispatched through Zoho Sign: the licence allows
-        // creating documents but not sending them, so the app fills the same
-        // templates itself and attaches them.
-        $results = app(LetterService::class)->emailExitLetters(
+        // Composed on the company letterhead and emailed, not dispatched
+        // through Zoho Sign. The licence blocks every Zoho send route, and the
+        // Zoho template artwork could not be filled correctly anyway: the tech
+        // relieving letter has no name field at all.
+        $results = app(ExitLetterDispatcher::class)->email(
             $employee->refresh(),
             context: $context,
         );
@@ -58,21 +59,21 @@ class ProcessTaskRunner
 
         if ($failed !== []) {
             $reasons = implode(' | ', array_map(
-                fn (array $r) => $r['template'].': '.$r['error'],
+                fn (array $r) => $r['letter'].': '.$r['error'],
                 $failed,
             ));
 
-            $sent = array_filter($results, fn (array $r) => $r['ok']);
-
+            // Delivery is all-or-nothing, so any failure means nothing left the
+            // building — even for the letters that built fine. Saying "1 of 2
+            // were sent" here would send someone chasing a document that does
+            // not exist.
             throw new RuntimeException(
-                ($sent === []
-                    ? 'No letters were sent. '
-                    : count($sent).' of '.count($results).' letters were sent, the rest failed. ')
-                .$reasons,
+                'Nothing was sent. '.count($failed).' of '.count($results)
+                .' letters could not be built: '.$reasons,
             );
         }
 
-        $summary = implode(', ', array_column($results, 'template'));
+        $summary = implode(', ', array_column($results, 'letter'));
 
         return trim(($evidence ? $evidence.' — ' : '')
             .'Emailed to '.($employee->personal_email ?: $employee->work_email).': '.$summary);

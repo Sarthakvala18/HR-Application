@@ -37,6 +37,15 @@ return [
 
     'mailers' => [
 
+        /*
+         | Gmail REST API, registered by AppServiceProvider. Set
+         | MAIL_MAILER=gmail to send as the authorised HR mailbox. Credentials
+         | live under services.google, not here.
+         */
+        'gmail' => [
+            'transport' => 'gmail',
+        ],
+
         'smtp' => [
             'transport' => 'smtp',
             'scheme' => env('MAIL_SCHEME'),

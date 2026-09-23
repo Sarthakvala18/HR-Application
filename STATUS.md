@@ -1,6 +1,6 @@
 # STATUS — Coach Foundation HR App
 
-**Updated:** 2026-09-15
+**Updated:** 2026-09-23
 
 ---
 
@@ -130,6 +130,43 @@ So the app fills the letters itself and emails them:
 
 The tradeoff: no countersigning, no audit trail, no signed-document webhook. The employee signs a PDF by hand. Restoring Zoho Sign is a licence purchase, not a code change.
 
+### Letters are composed in-app now, not stamped onto Zoho artwork (2026-09-17)
+
+The Zoho template artwork could not be filled correctly at all:
+
+- The tech relieving letter has **no name field of any kind**, so six blanks (Date, Employee Name, Employee Address, the salutation and two body mentions) were structurally unfillable.
+- The tech experience letter has **one employee's name baked into its body text**, so every other leaver would have received a letter naming him. The Operations version has that line as a proper blank, which is how the defect surfaced.
+
+Stamping was wrong in principle too: values land in a different font and baseline from the sentence around them, which is why the output looked pasted together.
+
+Letters are composed on the company letterhead instead:
+
+| Class | Role |
+| --- | --- |
+| `LetterContent` | The copy, as blocks with values already inside the sentences |
+| `LetterDocumentBuilder` | Layout: letterhead per page, typography, widow control |
+| `ExitLetterRenderer` | Employee record to finished PDF |
+| `ExitLetterDispatcher` | Which letters, what is missing, render and email |
+
+`ProcessTaskRunner` uses the dispatcher, so the offboarding pipeline no longer touches Zoho artwork. Delivery is all-or-nothing: a partial failure sends nothing and leaves the step outstanding.
+
+The offboarding screen gained a **Preview** action that downloads the finished PDF without sending, because an exit letter cannot be unsent. Preview values are not written to the record.
+
+One date format everywhere (`j F Y`). The home address is never auto-read from the encrypted payment record: that reveal is policy-gated and audited, and a letter generator must not route around it.
+
+The letterhead lives at `storage/app/letter-templates/letterhead.pdf`, excluded from git. It ships in the deploy zip but a fresh clone will not have it, and letter generation fails loudly without it. Tests generate their own stub.
+
+### Gmail sending (2026-09-16)
+
+Mail is Google Workspace, not Zoho: `coachfoundation.com` MX points at `aspmx.l.google.com`. An earlier instruction to use Zoho SMTP for this domain was wrong.
+
+Sending goes through the **Gmail REST API**, registered as `MAIL_MAILER=gmail`.
+
+Chosen over SMTP-with-XOAUTH2 deliberately: Gmail SMTP only accepts the `https://mail.google.com/` scope, which grants read and delete over the whole mailbox. The REST API accepts `gmail.send`, so the app can send and nothing else. A test asserts the scope never widens.
+
+`hr:gmail-auth url|exchange|check|test` completes the one-time consent. The refresh token is written into `.env` and never printed.
+
+**Not finished:** no consent has been granted yet, so there is no refresh token and `MAIL_MAILER` is still `log`. No letter has reached anyone.
 ### Two template defects that need fixing in Zoho
 
 1. **Tech relieving letter has no name field anywhere** — Employee Name, Employee Address and the body blank are all unfilled. It goes out not saying who it is about.
