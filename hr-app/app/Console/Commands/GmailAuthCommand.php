@@ -119,9 +119,12 @@ class GmailAuthCommand extends Command
             return self::FAILURE;
         }
 
-        if (config('mail.default') !== 'gmail') {
-            $this->warn('MAIL_MAILER is "'.config('mail.default').'", not "gmail".');
-            $this->warn('Sending through that mailer instead — set MAIL_MAILER=gmail to test the real path.');
+        // Only the drivers that quietly swallow mail are worth warning about.
+        // Both "smtp" and "gmail" are real delivery paths, so flagging smtp
+        // here told the sender their working setup was wrong.
+        if (in_array(config('mail.default'), ['log', 'array'], true)) {
+            $this->warn('MAIL_MAILER is "'.config('mail.default').'", which does not send anything.');
+            $this->warn('The message will be written to the log instead of delivered.');
         }
 
         $from = config('mail.from.address');

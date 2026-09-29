@@ -75,7 +75,16 @@ import os, sys, zipfile
 stage, target = sys.argv[1], sys.argv[2]
 
 with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-    for directory, _, files in os.walk(stage):
+    for directory, subdirs, files in os.walk(stage):
+        # Empty directories need an explicit entry. Laravel requires
+        # storage/framework/{views,cache/data,sessions} to exist and they ship
+        # empty, so a files-only archive deploys an app that dies with
+        # "Please provide a valid cache path".
+        if not files and not subdirs and directory != stage:
+            rel = os.path.relpath(directory, stage).replace(os.sep, '/')
+            archive.writestr(rel + '/', '')
+            continue
+
         for name in files:
             if name == '.DS_Store':
                 continue
