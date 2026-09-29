@@ -4,13 +4,13 @@ namespace App\Services\Process;
 
 use App\Enums\ProvisioningMode;
 use App\Models\AppAccess;
-use App\Models\DocumentTemplate;
 use App\Models\Employee;
 use App\Models\ProcessRun;
 use App\Models\ProcessTask;
 use App\Models\User;
-use App\Services\Zoho\LetterService;
+use App\Services\Letters\ExitLetterDispatcher;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Builds the offboarding pipeline.
@@ -176,40 +176,49 @@ class OffboardingRunBuilder extends RunBuilder
     }
 
     /**
-     * Names every exit letter this person should receive and flags any that
-     * cannot be sent yet, so the gap is visible while the run is being worked
+     * Names the letters this person will receive and lists anything still
+     * needed to write them, so a gap is visible while the run is being worked
      * rather than at the moment someone clicks send.
      *
-     * @param  array<int, DocumentTemplate>  $templates
+     * Describes the letterhead generator, not Zoho: nothing here depends on a
+     * registered Zoho template any more.
      */
-    private function lettersDescription(Employee $employee, array $templates): string
+    private function lettersDescription(Employee $employee): string
     {
+        $dispatcher = app(ExitLetterDispatcher::class);
         $from = config('mail.from.address', 'hr@example.com');
-        $department = $employee->department?->name ?? 'this department';
 
-        if ($templates === []) {
-            return 'No exit-letter templates are registered for '.$department
-                .'. Register them before this step can run.';
+        $recipient = $dispatcher->recipientFor($employee);
+
+        $lines = [
+            'Composed on the company letterhead and emailed from '.$from.'.',
+            '',
+        ];
+
+        $lines[] = $recipient === null
+            ? '- **No email address on record.** Add one before this step can run.'
+            : '- Sent to **'.$recipient.'**.';
+
+        try {
+            foreach ($dispatcher->titlesFor($employee) as $title) {
+                $lines[] = '- '.$title.'.';
+            }
+        } catch (InvalidArgumentException $e) {
+            // An unsupported team has no letter copy, which is a content gap
+            // rather than a configuration one.
+            return $e->getMessage();
         }
 
-        $lines = ['Sent from '.$from.'.', ''];
+        $missing = $dispatcher->missingFor($employee);
 
-        foreach ($templates as $template) {
-            $state = match (true) {
-                empty($template->field_map) => 'no field map recorded yet',
-                blank($template->zoho_template_id) => 'no Zoho template id yet',
-                ! $template->isVerified() => 'field map not verified against the Zoho API',
-                default => 'ready to send',
-            };
+        if ($missing !== []) {
+            $labels = array_map(
+                fn (string $key) => ExitLetterDispatcher::FIELD_LABELS[$key] ?? str_replace('_', ' ', $key),
+                $missing,
+            );
 
-            $lines[] = '- **'.ucfirst($template->type).'**: "'.$template->name.'" — '.$state.'.';
-        }
-
-        $expected = [DocumentTemplate::TYPE_RELIEVING, DocumentTemplate::TYPE_EXPERIENCE];
-        $present = array_map(fn (DocumentTemplate $template) => $template->type, $templates);
-
-        foreach (array_diff($expected, $present) as $missingType) {
-            $lines[] = '- **'.ucfirst($missingType).'**: no template registered for '.$department.'.';
+            $lines[] = '';
+            $lines[] = 'Still needed: **'.implode(', ', $labels).'**. You will be asked for these when sending.';
         }
 
         return implode("\n", $lines);
@@ -217,22 +226,12 @@ class OffboardingRunBuilder extends RunBuilder
 
     private function closingTasks(Employee $employee): void
     {
-        // Resolved at build time so the step names the exact templates and
-        // flags a missing one now, rather than failing at send.
-        $templates = app(LetterService::class)->exitTemplatesFor($employee);
-
         $this->task(
             key: 'letters',
             title: 'Send the relieving and experience letters',
             mode: ProcessTask::MODE_AUTOMATIC,
-            description: $this->lettersDescription($employee, $templates),
+            description: $this->lettersDescription($employee),
             dependsOn: ['verify_and_delete'],
-            payload: [
-                'document_template_ids' => array_map(
-                    fn (DocumentTemplate $template) => $template->id,
-                    $templates,
-                ),
-            ],
         );
 
         $this->task(

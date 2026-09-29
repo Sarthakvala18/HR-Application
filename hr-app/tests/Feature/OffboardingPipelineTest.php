@@ -210,6 +210,55 @@ class OffboardingPipelineTest extends TestCase
         );
     }
 
+    public function test_the_letters_step_names_both_letters_and_the_recipient(): void
+    {
+        $employee = $this->leaver(attributes: ['personal_email' => 'leaver@example.com']);
+
+        $letters = app(OffboardingRunBuilder::class)->build($employee)
+            ->tasks->firstWhere('key', ProcessTaskRunner::LETTERS_KEY);
+
+        $this->assertStringContainsString('Relieving Letter', $letters->description_md);
+        $this->assertStringContainsString('Experience Letter', $letters->description_md);
+        $this->assertStringContainsString('leaver@example.com', $letters->description_md);
+    }
+
+    public function test_the_letters_step_does_not_mention_zoho_templates(): void
+    {
+        // The step used to describe itself in terms of registered Zoho
+        // templates, so on a server where none were seeded it claimed the step
+        // could not run — even though the letters no longer need them at all.
+        $letters = app(OffboardingRunBuilder::class)->build($this->leaver())
+            ->tasks->firstWhere('key', ProcessTaskRunner::LETTERS_KEY);
+
+        $this->assertStringNotContainsString('Zoho', $letters->description_md);
+        $this->assertStringNotContainsString('No exit-letter templates are registered', $letters->description_md);
+    }
+
+    public function test_the_letters_step_lists_what_is_still_needed(): void
+    {
+        // No manager, so the relieving letter cannot say who they reported to.
+        $employee = $this->leaver(attributes: ['manager_id' => null]);
+
+        $letters = app(OffboardingRunBuilder::class)->build($employee)
+            ->tasks->firstWhere('key', ProcessTaskRunner::LETTERS_KEY);
+
+        $this->assertStringContainsString('Still needed', $letters->description_md);
+        $this->assertStringContainsString('Reported to', $letters->description_md);
+    }
+
+    public function test_the_letters_step_flags_a_missing_email_address(): void
+    {
+        $employee = $this->leaver(attributes: [
+            'personal_email' => null,
+            'work_email' => null,
+        ]);
+
+        $letters = app(OffboardingRunBuilder::class)->build($employee)
+            ->tasks->firstWhere('key', ProcessTaskRunner::LETTERS_KEY);
+
+        $this->assertStringContainsString('No email address on record', $letters->description_md);
+    }
+
     public function test_an_urgent_run_is_flagged(): void
     {
         $run = app(OffboardingRunBuilder::class)->build($this->leaver(), null, urgent: true);

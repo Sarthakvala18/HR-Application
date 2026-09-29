@@ -6,7 +6,6 @@ use App\Enums\EmployeeStatus;
 use App\Models\Department;
 use App\Models\DocumentTemplate;
 use App\Models\Employee;
-use App\Services\Process\OffboardingRunBuilder;
 use App\Services\Zoho\LetterService;
 use App\Services\Zoho\ZohoSignClient;
 use Database\Seeders\DocumentTemplateSeeder;
@@ -461,41 +460,9 @@ class ZohoSignTest extends TestCase
         Http::assertNothingSent();
     }
 
-    // ----------------------------------------------------- offboarding wiring
-
-    public function test_the_offboarding_letters_step_names_both_documents(): void
-    {
-        $employee = $this->leaver('tech');
-
-        $run = app(OffboardingRunBuilder::class)->build($employee);
-        $letters = $run->tasks->firstWhere('key', 'letters');
-
-        $this->assertStringContainsString('Relieving Letter tech detailed', $letters->description_md);
-        $this->assertStringContainsString('Experience Letter Tech', $letters->description_md);
-        $this->assertCount(2, $letters->payload['document_template_ids']);
-    }
-
-    public function test_the_letters_step_flags_an_unverified_template(): void
-    {
-        $employee = $this->leaver('operations');
-
-        $run = app(OffboardingRunBuilder::class)->build($employee);
-        $letters = $run->tasks->firstWhere('key', 'letters');
-
-        $this->assertStringContainsString('not verified against the Zoho API', $letters->description_md);
-    }
-
-    public function test_the_letters_step_reports_ready_once_a_template_is_verified(): void
-    {
-        DocumentTemplate::query()->update(['verified_at' => now()]);
-
-        $employee = $this->leaver('tech');
-
-        $run = app(OffboardingRunBuilder::class)->build($employee);
-        $letters = $run->tasks->firstWhere('key', 'letters');
-
-        $this->assertStringContainsString('ready to send', $letters->description_md);
-    }
+    // The three tests that asserted the offboarding letters step description
+    // moved to OffboardingPipelineTest. That step is described by the
+    // letterhead generator now, and no Zoho template takes part in it.
 
     // ------------------------------------------------------- sending both
 
