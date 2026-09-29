@@ -30,7 +30,11 @@ The measurable goal: a hire takes one form instead of eight consoles, an exit re
 
 ---
 
-## Quick start
+## Run it on localhost
+
+Needs **PHP 8.4.1+**. The locked Symfony packages refuse to load below that, and the error points at `vendor/composer/platform_check.php` rather than saying what is wrong.
+
+**First time only:**
 
 ```bash
 cd hr-app
@@ -38,15 +42,39 @@ composer install
 cp .env.example .env
 php artisan key:generate
 php artisan migrate --seed
-php artisan serve --port=8140
 ```
 
-Sign in at `http://localhost:8140/admin` with `admin@example.com` / `password`. That account is created by the seeder in the `local` environment only.
+**Every time:**
 
-Run the tests:
+```bash
+cd hr-app && php artisan serve --port=8140
+```
+
+Sign in at `http://localhost:8140/admin` with `admin@example.com` / `password`. The seeder creates that account **only** when `APP_ENV=local` — on a real server no login exists until you create one.
+
+**Tests:**
 
 ```bash
 cd hr-app && php artisan test
+```
+
+### Three things that will catch you out
+
+**Letters need artwork that is not in git.** `storage/app/letter-templates/` holds the company letterhead and the four letter PDFs. They are excluded deliberately — company artwork does not belong in a public repository — so a fresh clone cannot generate a letter and fails with `Letterhead not found`. Copy them in from the deploy zip or from another checkout. The tests generate their own stub, so a green suite does not prove you have them.
+
+**Check the mailer before clicking Send.**
+
+```bash
+php artisan tinker --execute='echo config("mail.default").PHP_EOL;'
+```
+
+`log` writes mail to `storage/logs/laravel.log` and delivers nothing. `smtp` or `gmail` sends for real, to whatever address is on the employee record. Use the **Preview** action on the letters step when you only want to look at a document.
+
+**If the login bounces back to itself**, sessions are stale rather than credentials being wrong:
+
+```bash
+php artisan optimize:clear
+php artisan tinker --execute='\DB::table("sessions")->truncate();'
 ```
 
 ---
