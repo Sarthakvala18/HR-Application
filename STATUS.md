@@ -1,6 +1,6 @@
 # STATUS — Coach Foundation HR App
 
-**Updated:** 2026-09-23
+**Updated:** 2026-09-30
 
 ---
 
@@ -177,9 +177,45 @@ Both are content problems in the Zoho templates, not app bugs. The app can only 
 
 ---
 
+## Session 2026-09-30 — real data load and offboarding preparation
+
+Work on a fresh Windows machine, following the README end to end, then loading real people and preparing the first offboarding batch. No application code changed; this session was environment, data and research.
+
+**Environment (Windows, first run)**
+- PHP and Composer were not installed. Installed PHP 8.4 via winget (the NTS 8.4 package 404s; the thread-safe `PHP.PHP.8.4` package works), created `php.ini` with `mbstring, openssl, pdo_sqlite, sqlite3, curl, zip, fileinfo, intl, gd, pdo_mysql`, and downloaded `composer.phar` (run as `php composer.phar`).
+- `gd` is required by `setasign/fpdf`; `composer install` fails without it.
+- A fresh PHP has **no CA bundle**, so every outbound HTTPS call (Zoho, Gmail) failed with cURL error 60. Fixed by downloading `cacert.pem` and setting `curl.cainfo` and `openssl.cafile`.
+- The default 30 s `max_execution_time` produced 500s on first load (Filament view compilation). Raised to 180 s, OPcache enabled, server started with `PHP_CLI_SERVER_WORKERS=4`.
+- `hr-app/.env` and the SQLite database already existed with an `APP_KEY`, so `key:generate` was deliberately **not** run: regenerating it would make the encrypted bank, salary and address data unrecoverable. `MAIL_MAILER` was set to `log` for local safety.
+- Suite: **222 tests, 523 assertions passing** (README updated from 183/413).
+
+**Data loaded (local SQLite only, never committed)**
+- Seven leavers added to the employee directory in status Offboarding from the HR personal-details form, Slack profiles and the Slack member export: two Tech, four Operations, one Product. Each has a last working day (one still unknown), manager, position (one unknown) and a recorded Slack access row (paid seat, guest, or revoked).
+- Joining dates for four of them are the form submit date and are marked approximate in the record notes. Sources for dates: form hired-date column, then Zoho Sign letters, then Slack.
+- One existing record was corrected against the form (joining date and title).
+- Department matrix changed: Tech and Operations leavers now route mail and Drive data to their manager first; Product routes to the shared product support mailbox (was a placeholder). **This affects all future leavers in those departments.**
+- No offboarding runs have been started, by decision.
+
+**Where employee history actually lives (research findings)**
+- Zoho Sign holds every letter from Oct 2024 onward (appointment letters, NDAs, promotions, pay increments). Letters can be listed and downloaded via `GET /requests` and `GET /requests/{id}/pdf`; the downloads are zips of PDFs for multi-document requests. The API works on this licence for reads.
+- The HelloSign key in the separate `general-manager` project belongs to a different account (services@) and holds only client contracts plus a handful of offer letters. Promotions and pay increments from 2023-24 were sent from the **hr@ HelloSign account**, which we have no key for. Only the notification emails are readable (Gmail returns attachment names, not text).
+- A Zoho Sign request title can disagree with the letter inside. One promotion request was titled "General Manager" but the PDF says Account Manager to Product Owner. **Always read the PDF, never trust the title.**
+- Slack profile titles are stale for at least one person; #champions announcements are the reliable public record of promotions, and even those are not complete.
+- Appointment letters from 2025 restart the hired date under a new legal entity, so they are not the original joining date. The experience letter needs the original joining date.
+
+**Letters and roles: recommended policy (not yet implemented)**
+- Experience letter: list every role with its own effective dates, latest first, plus total tenure. Relieving letter: last designation and last working day only. Salary on neither unless the employee asks.
+- Requires a role history table (title, department, start, end). The Zoho templates hold a single text position field, so the experience letter would receive one combined string ("Role A (Jan 2023 to Mar 2025), Role B (Mar 2025 to Sep 2026)"); no Zoho template change needed.
+
+**Open design gap:** letter templates exist only for the Tech and Operations departments. A person in any other department (Product, Marketing, and so on) fails the letters step with "No template registered". Recommended fix: allow a department to fall back to another department's templates.
+
+**Access checks still manual:** only Slack is verified (from the member export). Google Workspace, Zoho One and Desk, Zoom and Bitwarden need a manual look in each admin console for every leaver; the app has no read access to any of them.
+
+---
+
 ## In progress
 
-Nothing mid-flight in code. The build is at a clean checkpoint: 193 tests passing, Pint clean.
+Nothing mid-flight in code. The build is at a clean checkpoint: 222 tests passing.
 
 Two things are finished in code but not yet true in production:
 
@@ -190,6 +226,8 @@ Two things are finished in code but not yet true in production:
 
 ## Next steps
 
+0. **Offboarding batch (immediate)** — get the last two facts (one last day, one position), check access in the five consoles per leaver, decide the Product-department letter fallback, then start runs. Two leavers have a last day of 2026-09-30, so their revocations are due now.
+0. **Role history** — add a role-history table and the per-letter policy above; back-fill from Zoho Sign PDFs and, once a key exists, the hr@ HelloSign account.
 1. **SMTP** — set real mail credentials so letters actually leave the server. Nothing else in offboarding matters until this is done.
 2. **Integrations** — Typeform webhooks with hidden `employee_id`, Zoom and Zoho provisioning behind the existing task hooks, Slack announcements. The pipelines already have the slots; the adapters are what is missing. The Zoho Sign send + signature webhook stays parked behind the licence.
 3. **Google OAuth login** to replace password auth before anyone else uses it.
@@ -219,6 +257,9 @@ Match confidence is computed at import time against whoever existed then. Becaus
 | 7 | Real destination mailboxes | The offboarding matrix uses placeholder addresses for "admin", "product", "services" |
 | 8 | Role template contents | Channels, groups and Bitwarden collections are placeholders pending HR input |
 | 9 | **Zoho template fixes** | Tech relieving letter has no name field; experience letters have an undefined third name blank. Letters go out incomplete until fixed in Zoho |
+| 11 | **hr@ HelloSign API key** (or exported PDFs) | 2023-24 promotions and pay increments cannot be read, so role-change dates before Oct 2024 are unverified |
+| 12 | Last working day and position for two leavers | Blocks the letters for those two |
+| 13 | Access in Google, Zoho, Zoom, Bitwarden for each leaver | Offboarding steps are generated from held access; only Slack is recorded |
 | 10 | **GitHub push access** | `gh` is authenticated as `Sarthakvala`; the repo belongs to `Sarthakvala18` and returns `push: false` / 403. Work is committed locally only |
 
 **Decisions already made**

@@ -26,7 +26,7 @@ The measurable goal: a hire takes one form instead of eight consoles, an exit re
 - **Filament 5** admin panel
 - **SQLite** for local development, **MySQL** in production
 - **Zoho Sign** for exit letters
-- PHPUnit — **183 tests, 413 assertions**
+- PHPUnit — **222 tests, 523 assertions**
 
 ---
 
@@ -78,6 +78,16 @@ php artisan tinker --execute='\DB::table("sessions")->truncate();'
 ```
 
 ---
+
+### Windows setup notes
+
+On a fresh Windows machine PHP and Composer are not installed. `winget install PHP.PHP.8.4` works (the non-thread-safe 8.4 package currently 404s). Then:
+
+- Copy `php.ini-development` to `php.ini` and enable `mbstring, openssl, pdo_sqlite, sqlite3, curl, zip, fileinfo, intl, gd`. `gd` is required by `setasign/fpdf`; `composer install` refuses without it.
+- Download `cacert.pem` and set `curl.cainfo` and `openssl.cafile`. Without it every outbound HTTPS call (Zoho, Gmail) fails with cURL error 60.
+- Set `max_execution_time = 180` and enable OPcache, or the first Filament page load times out with a 500.
+- Run `php composer.phar install` if Composer itself is not on PATH.
+- If `.env` and the SQLite database already exist, **do not run `key:generate`**: a new `APP_KEY` makes the encrypted data unreadable.
 
 ## Documentation
 
